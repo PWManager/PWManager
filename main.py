@@ -6,7 +6,6 @@ from cryptography.fernet import Fernet
 import random as rand
 import threading
 import requests
-from pystray import Icon, MenuItem, Menu
 import PIL.Image
 
 # Генерация ключа, если он не существует
