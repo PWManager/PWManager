@@ -4,9 +4,6 @@ import os
 import json
 from cryptography.fernet import Fernet
 import random as rand
-import threading
-import requests
-import PIL.Image
 
 # Генерация ключа, если он не существует
 if not os.path.exists("crypt.key"):
