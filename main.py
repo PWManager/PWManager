@@ -4,6 +4,8 @@ import os
 import json
 from cryptography.fernet import Fernet
 import random as rand
+import logging
+import keyboard
 
 # Генерация ключа, если он не существует
 if not os.path.exists("crypt.key"):
@@ -24,6 +26,12 @@ PASSWORDS_FILE = "passwords.json"
 if not os.path.exists(PASSWORDS_FILE):
     with open(PASSWORDS_FILE, "w") as f:
         json.dump({}, f)
+        
+with open("PWManager.log", "w") as f:
+    f.write("")
+        
+logging.basicConfig(filename="PWManager.log", level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
+PWManager_logger = logging.getLogger("PWManager")
 
 class PasswordManager(tk.Tk):
     def __init__(self):
@@ -33,6 +41,8 @@ class PasswordManager(tk.Tk):
         self.iconbitmap("icon.ico")  # Make sure the icon.ico file exists in the same directory
         self.resizable(False, False)
         self.configure(bg="#1f1f1f")
+        self.protocol("WM_DELETE_WINDOW", self.on_exit)
+        PWManager_logger.debug("Initializing successfully")
 
         self.site_label = tk.Label(self, text="Сайт:", bg="#1f1f1f", fg="white", font=("Arial", 16))
         self.site_label.pack(pady=10)
@@ -62,6 +72,15 @@ class PasswordManager(tk.Tk):
         self.view_passwords_button = tk.Button(self, text="Просмотр паролей", bg="#2196f3", fg="white", font=("Arial", 16),
                                              command=self.view_passwords)
         self.view_passwords_button.pack(pady=10)
+        
+        keyboard.add_hotkey("F3+C", self.crash)
+        
+        PWManager_logger.debug("GUI initialized successfully for elements")
+        
+    def on_exit(self):
+        PWManager_logger.info("GUI closed successfully")
+        keyboard.remove_hotkey("F3+C")
+        self.destroy()
 
     def generate_password(self):
         from tkinter.simpledialog import askinteger
@@ -69,6 +88,12 @@ class PasswordManager(tk.Tk):
         password = "".join(chr(rand.randint(33, 126)) for _ in range(range_of))
         self.password_entry.delete(0, tk.END)
         self.password_entry.insert(0, password)
+        PWManager_logger.debug("Password generated successfully")
+        
+    def crash(self):
+        PWManager_logger.error("Unsearchable error!")
+        PWManager_logger.critical("GUI crashed by user! (0x0000000000)")
+        self.destroy()
 
     def show_about(self):
         messagebox.showinfo("О программе", "PWManager - Менеджер паролей. Версия 1.0. Автор: @MichaelSoftWare2025 на github.")
@@ -81,11 +106,14 @@ class PasswordManager(tk.Tk):
         try:
             with open(PASSWORDS_FILE, "r") as f:
                 data = json.load(f)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            PWManager_logger.error(f"Error decoding passwords file: {e}")
+            PWManager_logger.info("Data of passwords file is empty! {}")
             data = {}
 
         if site in data:
             messagebox.showerror("Ошибка", "Пароль для этого сайта уже существует! Сначала удалите существующий пароль.")
+            PWManager_logger.error("Error saving password: Password already exists for this site!")
             return
 
         encrypted_password = "PWManager-Encrypted-Password-v1.0:" + cipher.encrypt(password.encode()).decode()
@@ -95,6 +123,7 @@ class PasswordManager(tk.Tk):
             json.dump(data, f, indent=4)
 
         messagebox.showinfo("Успех", "Пароль успешно сохранен!")
+        PWManager_logger.info("Password saved successfully!")
 
     def delete_password(self, site):
         try:
@@ -104,6 +133,7 @@ class PasswordManager(tk.Tk):
             data = {}
 
         if site not in data:
+            PWManager_logger.error("Error deleting password: Password not found for this site!")
             messagebox.showerror("Ошибка", "Пароль для этого сайта не найден! Сначала сохраните пароль для этого сайта.")
             return
 
@@ -113,6 +143,7 @@ class PasswordManager(tk.Tk):
             json.dump(data, f, indent=4)
 
         messagebox.showinfo("Успех", "Пароль успешно удален!")
+        PWManager_logger.info("Password deleted successfully!")
 
     def save_gui_password(self):
         site = self.site_entry.get()
@@ -132,21 +163,26 @@ class PasswordManager(tk.Tk):
             data = {}
 
         if site not in data:
+            PWManager_logger.error("Error copying password: Password not found for this site!")
             messagebox.showerror("Ошибка", "Пароль для этого сайта не найден! Сначала сохраните пароль для этого сайта.")
             return
 
         password = cipher.decrypt(data[site].replace("PWManager-Encrypted-Password-v1.0:", "").encode()).decode()
         pyperclip.copy(password)
         messagebox.showinfo("Успех", "Пароль скопирован в буфер обмена!")
+        PWManager_logger.info("Password copied to clipboard successfully!")
 
     def view_passwords(self):
         try:
             with open(PASSWORDS_FILE, "r") as f:
                 data = json.load(f)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            PWManager_logger.error(f"Error decoding passwords file: {e}")
+            PWManager_logger.info("Data of passwords file is empty! {}")
             data = {"Ошибка": cipher.encrypt("Ошибка декодирования файла паролей.".encode()).decode()}
 
         if not data:
+            PWManager_logger.error("Error viewing passwords: No passwords found!")
             messagebox.showinfo("Нет паролей", "Пароли еще не сохранены. Сначала сохраните пароль для любого сайта.")
             return
 
@@ -186,7 +222,9 @@ class PasswordManager(tk.Tk):
             canvas.yview_scroll(-1 * (event.delta // 120), "units")
 
         canvas.bind_all("<MouseWheel>", on_mouse_scroll)
+        PWManager_logger.info("Passwords viewed successfully!")
 
 if __name__ == "__main__":
     app = PasswordManager()
+    PWManager_logger.debug("GUI initialized successfully")
     app.mainloop()
