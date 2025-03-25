@@ -2,3 +2,4 @@ cryptography
 Pillow
 pyperclip
 keyboard
+logging
