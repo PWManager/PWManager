@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import messagebox, simpledialog
+from tkinter import messagebox
 import os
 import json
 from cryptography.fernet import Fernet
