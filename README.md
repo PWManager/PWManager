@@ -9,12 +9,14 @@ PWManager is a simple, easy-to-use password manager built using Python and Tkint
 - **Password Viewing**: View saved passwords.
 - **Clipboard Copy**: Copy passwords to your clipboard.
 - **Secure Encryption**: Passwords are encrypted using Fernet encryption.
+- **Logging System**: You can view logs, if app crashed
 
 ## Features
 - Password save, view, delete functionality.
 - Password generation with customizable length.
 - Encryption of saved passwords.
 - Clipboard copy functionality for passwords.
+- Logging system.
   
 ## Requirements
 - Python 3.x
