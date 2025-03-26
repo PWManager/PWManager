@@ -1,11 +1,13 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, scrolledtext
 import os
 import json
 from cryptography.fernet import Fernet
 import random as rand
 import logging
-import keyboard
+import threading
+import win32api
+import time
 
 # Генерация ключа, если он не существует
 if not os.path.exists("crypt.key"):
@@ -32,6 +34,21 @@ with open("PWManager.log", "w") as f:
         
 logging.basicConfig(filename="PWManager.log", level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
 PWManager_logger = logging.getLogger("PWManager")
+
+def getWindowsVersion():
+    version = win32api.GetVersionEx()
+
+    # Выводим номер версии
+    if version[0] == 10:
+        return 10
+    elif version[0] == 6 and version[1] == 1:
+        return 7
+    elif version[0] == 6 and version[1] == 2:
+        return 8
+    elif version[0] == 6 and version[1] == 3:
+        return 8.1
+    else:
+        return version[0]
 
 class PasswordManager(tk.Tk):
     def __init__(self):
@@ -73,14 +90,47 @@ class PasswordManager(tk.Tk):
                                              command=self.view_passwords)
         self.view_passwords_button.pack(pady=10)
         
-        keyboard.add_hotkey("F3+C", self.crash)
+        self.bind("<Shift-F3>", self.crash)
+        self.bind("<Shift-F4>", self.open_console)
         
         PWManager_logger.debug("GUI initialized successfully for elements")
+        PWManager_logger.info(f"User's Windows version is {getWindowsVersion()}")
+        PWManager_logger.debug("Thread 0 is inited!")
+        
+        self.crash_handler()
         
     def on_exit(self):
         PWManager_logger.info("GUI closed successfully")
-        keyboard.remove_hotkey("F3+C")
         self.destroy()
+        
+    def crash_handler(self):
+        def checkForCriticalError():
+            try:
+                with open("PWManager.log", "r") as f:
+                    log_content = f.readlines()
+                    for line in log_content:
+                        if "CRITICAL" in line:
+                            return True
+                    
+                    return False
+            except Exception as e:
+                print(f"Ошибка при чтении лог-файла: {e}")
+                return False
+
+        def monitor_critical_errors():
+            while True:
+                if checkForCriticalError():
+                    messagebox.showerror("Критическая ошибка", "Произошла критическая ошибка!")
+                    self.destroy()
+                    break
+                
+                time.sleep(0.5)  # Пауза перед следующей проверкой, чтобы избежать чрезмерной загрузки процессора
+
+        # Запускаем мониторинг в отдельном потоке
+        monitor_thread = threading.Thread(target=monitor_critical_errors, daemon=True)
+        monitor_thread.start()
+        PWManager_logger.debug("Crash handler inited! (Thread 1)")
+                            
 
     def generate_password(self):
         from tkinter.simpledialog import askinteger
@@ -90,10 +140,51 @@ class PasswordManager(tk.Tk):
         self.password_entry.insert(0, password)
         PWManager_logger.debug("Password generated successfully")
         
-    def crash(self):
+    def crash(self, event):
         PWManager_logger.error("Unsearchable error!")
         PWManager_logger.critical("GUI crashed by user! (0x0000000000)")
-        self.destroy()
+        
+    def open_console(self, event):
+        console_thread = threading.Thread(target=self.console, daemon=True)
+        console_thread.start()
+        
+        PWManager_logger.debug("Thread 2 is inited!")
+        PWManager_logger.debug("Opening console successfully")
+
+    def console(self):
+        import tkinter as tk
+        console_window = tk.Toplevel(self)
+        console_window.title("Консоль")
+        console_window.iconbitmap("icon.ico")
+        console_window.geometry("800x600")
+        console_window.resizable(False, False)
+        
+        # Используем виджет Text для поддержания прокрутки
+        self.logger_text = scrolledtext.ScrolledText(console_window, font=("Arial", 12), bg="#1f1f1f", fg="white")
+        self.logger_text.pack(expand=True, fill="both")
+        self.logger_text.config(state=tk.DISABLED)  # Запрещаем редактирование
+        
+        def update_logger():
+            try:
+                with open("PWManager.log", "r") as f:
+                    log_content = f.read()
+                    # Включаем редактирование текста только для обновления
+                    self.logger_text.config(state=tk.NORMAL)
+                    self.logger_text.delete(1.0, tk.END)  # Очищаем текстовое поле
+                    self.logger_text.insert(tk.END, log_content)  # Вставляем новые данные
+                    self.logger_text.config(state=tk.DISABLED)  # Отключаем редактирование
+            except Exception as e:
+                self.logger_text.config(state=tk.NORMAL)
+                self.logger_text.delete(1.0, tk.END)
+                self.logger_text.insert(tk.END, f"Ошибка чтения файла журнала: {str(e)}")
+                self.logger_text.config(state=tk.DISABLED)
+        
+        def refresh_logger():
+            update_logger()
+            console_window.after(500, refresh_logger)  # Повторяем обновление каждые 500 миллисекунд
+        
+        # Инициализируем первый вызов обновления
+        refresh_logger()
 
     def show_about(self):
         messagebox.showinfo("О программе", "PWManager - Менеджер паролей. Версия 1.0. Автор: @MichaelSoftWare2025 на github.")
@@ -106,6 +197,7 @@ class PasswordManager(tk.Tk):
         try:
             with open(PASSWORDS_FILE, "r") as f:
                 data = json.load(f)
+                PWManager_logger.debug("JSON file opened successfully. JSON content is: " + str(data))
         except json.JSONDecodeError as e:
             PWManager_logger.error(f"Error decoding passwords file: {e}")
             PWManager_logger.info("Data of passwords file is empty! {}")
