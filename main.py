@@ -91,45 +91,14 @@ class PasswordManager(tk.Tk):
         self.view_passwords_button.pack(pady=10)
         
         self.bind("<Shift-F3>", self.crash)
-        self.bind("<Shift-F4>", self.open_console)
         
         PWManager_logger.debug("GUI initialized successfully for elements")
         PWManager_logger.info(f"User's Windows version is {getWindowsVersion()}")
         PWManager_logger.debug("Thread 0 is inited!")
         
-        self.crash_handler()
-        
     def on_exit(self):
         PWManager_logger.info("GUI closed successfully")
         self.destroy()
-        
-    def crash_handler(self):
-        def checkForCriticalError():
-            try:
-                with open("PWManager.log", "r") as f:
-                    log_content = f.readlines()
-                    for line in log_content:
-                        if "CRITICAL" in line:
-                            return True
-                    
-                    return False
-            except Exception as e:
-                print(f"Ошибка при чтении лог-файла: {e}")
-                return False
-
-        def monitor_critical_errors():
-            while True:
-                if checkForCriticalError():
-                    messagebox.showerror("Критическая ошибка", "Произошла критическая ошибка!")
-                    self.destroy()
-                    break
-                
-                time.sleep(0.5)  # Пауза перед следующей проверкой, чтобы избежать чрезмерной загрузки процессора
-
-        # Запускаем мониторинг в отдельном потоке
-        monitor_thread = threading.Thread(target=monitor_critical_errors, daemon=True)
-        monitor_thread.start()
-        PWManager_logger.debug("Crash handler inited! (Thread 1)")
                             
 
     def generate_password(self):
@@ -143,48 +112,8 @@ class PasswordManager(tk.Tk):
     def crash(self, event):
         PWManager_logger.error("Unsearchable error!")
         PWManager_logger.critical("GUI crashed by user! (0x0000000000)")
-        
-    def open_console(self, event):
-        console_thread = threading.Thread(target=self.console, daemon=True)
-        console_thread.start()
-        
-        PWManager_logger.debug("Thread 2 is inited!")
-        PWManager_logger.debug("Opening console successfully")
 
-    def console(self):
-        import tkinter as tk
-        console_window = tk.Toplevel(self)
-        console_window.title("Консоль")
-        console_window.iconbitmap("icon.ico")
-        console_window.geometry("800x600")
-        console_window.resizable(False, False)
-        
-        # Используем виджет Text для поддержания прокрутки
-        self.logger_text = scrolledtext.ScrolledText(console_window, font=("Arial", 12), bg="#1f1f1f", fg="white")
-        self.logger_text.pack(expand=True, fill="both")
-        self.logger_text.config(state=tk.DISABLED)  # Запрещаем редактирование
-        
-        def update_logger():
-            try:
-                with open("PWManager.log", "r") as f:
-                    log_content = f.read()
-                    # Включаем редактирование текста только для обновления
-                    self.logger_text.config(state=tk.NORMAL)
-                    self.logger_text.delete(1.0, tk.END)  # Очищаем текстовое поле
-                    self.logger_text.insert(tk.END, log_content)  # Вставляем новые данные
-                    self.logger_text.config(state=tk.DISABLED)  # Отключаем редактирование
-            except Exception as e:
-                self.logger_text.config(state=tk.NORMAL)
-                self.logger_text.delete(1.0, tk.END)
-                self.logger_text.insert(tk.END, f"Ошибка чтения файла журнала: {str(e)}")
-                self.logger_text.config(state=tk.DISABLED)
-        
-        def refresh_logger():
-            update_logger()
-            console_window.after(500, refresh_logger)  # Повторяем обновление каждые 500 миллисекунд
-        
-        # Инициализируем первый вызов обновления
-        refresh_logger()
+        self.destroy()
 
     def show_about(self):
         messagebox.showinfo("О программе", "PWManager - Менеджер паролей. Версия 1.0. Автор: @MichaelSoftWare2025 на github.")
@@ -282,6 +211,7 @@ class PasswordManager(tk.Tk):
         view_window = tk.Toplevel(self)
         view_window.iconbitmap("icon.ico")
         view_window.title("Просмотр паролей (PWManager)")
+        PWManager_logger.debug("Password viewer inited!")
         view_window.geometry("500x500")
         view_window.configure(bg="#1f1f1f")
 
