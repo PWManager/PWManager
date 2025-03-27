@@ -46,5 +46,5 @@ This project is licensed under the MIT License.
 ---
 
 <p align="center">
-    <img src="icon.ico" alt="PWManager Icon" width="500" height="500"/>
+    <img src="icon.ico" alt="PWManager Icon" width="200" height="200"/>
 </p>
