@@ -23,7 +23,7 @@ PWManager is a simple, easy-to-use password manager built using Python and Tkint
 - Logging system.
   
 ## Requirements
-- Python 3.x
+- Python 3.x (Recomended Python 3.12.2)
 - Tkinter (usually included with Python)
 - Cryptography
 - Pillow
