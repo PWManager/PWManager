@@ -5,9 +5,7 @@ import json
 from cryptography.fernet import Fernet
 import random as rand
 import logging
-import threading
 import win32api
-import time
 
 # Генерация ключа, если он не существует
 if not os.path.exists("crypt.key"):
