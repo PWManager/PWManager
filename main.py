@@ -45,6 +45,10 @@ PASSWORDS_FILE = "passwords.json"
 if not os.path.exists(PASSWORDS_FILE):
     with open(PASSWORDS_FILE, "w") as f:
         json.dump({}, f)
+        
+if not os.path.exists(TWOFACTORFILE):
+    with open(TWOFACTORFILE, "w") as f:
+        json.dump({}, f)
 
 def getWindowsVersion():
     version = win32api.GetVersionEx()
