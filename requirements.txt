@@ -3,3 +3,4 @@ Pillow
 pyperclip
 logging
 win32api
+pyotp
