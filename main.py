@@ -7,6 +7,7 @@ import rsa
 import win32api
 import pyotp as TwoFactorAuth
 import pyperclip
+import string
 
 KEY_SIZE = 2048
 PRIVATE_KEY_FILE = "private_key.key"
@@ -30,12 +31,19 @@ class CIPHER:
         self.public_key = public_key
         self.private_key = private_key
 
-    def encrypt(self, message: str):
+    def encrypt(self, message):
         return rsa.encrypt(message.encode(), self.public_key).hex()
 
-    def decrypt(self, encrypted_message: str):
-        decrypted = rsa.decrypt(bytes.fromhex(encrypted_message), self.private_key)
-        return decrypted.decode()
+    def decrypt(self, encrypted_message):
+        try:
+            # Check if the encrypted_message is valid hex
+            decrypted = rsa.decrypt(bytes.fromhex(encrypted_message), self.private_key)
+            return decrypted
+        except ValueError as e:
+            print(f"Error: The provided message is not a valid hex string. Error: {e}")
+            print(f"Encrypted message: {encrypted_message}")
+            # Optionally, return None or handle the error as needed
+            return None
 
 cipher = CIPHER()
 
@@ -49,21 +57,6 @@ if not os.path.exists(PASSWORDS_FILE):
 if not os.path.exists(TWOFACTORFILE):
     with open(TWOFACTORFILE, "w") as f:
         json.dump({}, f)
-
-def getWindowsVersion():
-    version = win32api.GetVersionEx()
-
-    # Выводим номер версии
-    if version[0] == 10:
-        return 10
-    elif version[0] == 6 and version[1] == 1:
-        return 7
-    elif version[0] == 6 and version[1] == 2:
-        return 8.0
-    elif version[0] == 6 and version[1] == 3:
-        return 8.1
-    else:
-        return version[0]
 
 class PasswordManager(tk.Tk):
     def __init__(self):
@@ -238,8 +231,9 @@ class PasswordManager(tk.Tk):
                             
     def generate_password(self):
         from tkinter.simpledialog import askinteger
+        possible = string.ascii_lowercase + string.ascii_uppercase + string.digits + string.punctuation
         range_of = askinteger("Диапазон", "Введите количество символов (например, 10):")
-        password = "".join(chr(rand.randint(33, 126)) for _ in range(range_of))
+        password = "".join(rand.choice(possible) for _ in range(range_of))
         self.password_entry.delete(0, tk.END)
         self.password_entry.insert(0, password)
         
@@ -300,7 +294,7 @@ class PasswordManager(tk.Tk):
             messagebox.showerror("Ошибка", "Пароль для этого сайта не найден!")
             return
         
-        password = cipher.decrypt(data[site])
+        password = cipher.decrypt(data[site].replace("PWManager-Encrypted-Password-v1.0:", "").replace("PWManager-Encrypted-2FA-v1.0", ""))
         pyperclip.copy(password)
         messagebox.showinfo("Успех", "Пароль скопирован в буфер обмена!")
 
@@ -337,11 +331,32 @@ class PasswordManager(tk.Tk):
 
         # Заполнение паролями
         for site, encrypted_password in data.items():
-            password = cipher.decrypt(encrypted_password.replace("PWManager-Encrypted-Password-v1.0:", "").encode())
+            password = cipher.decrypt(encrypted_password.replace("PWManager-Encrypted-Password-v1.0:", ""))
+            
+            site_label = tk.Label(scroll_frame, text=f"{site}: ", bg="#1f1f1f", fg="white", font=("Arial", 12))
+            site_label.pack(side=tk.LEFT)
+            
+            frame = tk.Frame(scroll_frame, bg="#1f1f1f")
+            frame.pack(fill=tk.X, pady=5, padx=10)
 
-            copy_button = tk.Button(scroll_frame, text=f"{site}: {password}", bg="#1f1f1f", fg="white", font=("Arial", 12),
-                                  command=lambda site=site: self.copy_to_clipboard(site))
-            copy_button.pack(side=tk.LEFT, padx=5)
+            password_var = tk.StringVar(value="*" * len(password))
+            is_visible = [False]  # Обходим ограничение замыканий в Python
+
+            password_label = tk.Label(frame, textvariable=password_var, bg="#1f1f1f", fg="white", font=("Arial", 12))
+            password_label.pack(side=tk.LEFT, padx=(0, 5))
+
+            def toggle_password(p=password, var=password_var, flag=is_visible):
+                flag[0] = not flag[0]
+                var.set(p if flag[0] else "*" * len(p))
+
+            toggle_button = tk.Button(frame, text="N", bg="#2196f3", fg="white", font=("Webdings", 10),
+                                    command=toggle_password)
+            toggle_button.pack(side=tk.RIGHT, padx=5)
+
+            copy_button = tk.Button(frame, text="Копировать", bg="#4caf50", fg="white", font=("Arial", 10),
+                                    command=lambda site=site: self.copy_to_clipboard(site))
+            copy_button.pack(side=tk.RIGHT, padx=5)
+
 
         # Обновление прокручиваемой области
         scroll_frame.update_idletasks()

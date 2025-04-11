@@ -7,6 +7,7 @@
 /private_key.key
 /passwords.json
 /2fa.json
+/.vscode
 
 # Игнорируем директории для сборки и дистрибутива
 /build
