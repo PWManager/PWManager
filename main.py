@@ -4,7 +4,6 @@ import os
 import json
 import random as rand
 import rsa
-import win32api
 import pyotp as TwoFactorAuth
 import pyperclip
 import string
