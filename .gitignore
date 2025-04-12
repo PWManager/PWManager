@@ -9,6 +9,7 @@
 /2fa.json
 /.vscode
 /PWManager_Installer.exe
+/Output
 
 # Игнорируем директории для сборки и дистрибутива
 /build
