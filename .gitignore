@@ -8,6 +8,7 @@
 /passwords.json
 /2fa.json
 /.vscode
+/PWManager_Installer.exe
 
 # Игнорируем директории для сборки и дистрибутива
 /build
