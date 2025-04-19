@@ -7,6 +7,8 @@ import rsa
 import pyotp as TwoFactorAuth
 import pyperclip
 import string
+import time
+import base64
 
 KEY_SIZE = 2048
 PRIVATE_KEY_FILE = "private_key.key"
@@ -107,9 +109,30 @@ class PasswordManager(tk.Tk):
         self.towfa_auth_button.pack(pady=10)
         
         self.bind("<Shift-F3>", self.crash)
+        self.bind("<Shift-F2>", self.on_program_exit_event)
         
     def on_exit(self):
         self.destroy()
+        
+    def on_program_exit_event(self, event, code: str | None = "Closed by user"):
+        for widget in self.winfo_children():
+            widget.destroy()
+        else:
+            label = tk.Label(self, text="Теперь можно закрыть PWManager через кнопку.", bg="#1f1f1f", fg="white", font=("Arial", 16))
+            label.pack(expand=True)
+            
+            label2 = tk.Label(self, text=f"Код закрытия: {base64.b64encode(code.encode()).decode()}", bg="#1f1f1f", fg="white", font=("Arial", 16))
+            label2.pack(expand=True)
+        
+    def on_program_exit(self, code: str | None = "Closed by user."):
+        for widget in self.winfo_children():
+            widget.destroy()
+        else:
+            label = tk.Label(self, text="Теперь можно закрыть PWManager через кнопку.", bg="#1f1f1f", fg="white", font=("Arial", 16))
+            label.pack(expand=True)
+            
+            label2 = tk.Label(self, text=f"Код закрытия: {base64.b64encode(code.encode()).decode()}", bg="#1f1f1f", fg="white", font=("Arial", 16))
+            label2.pack(expand=True)
         
     def twofa_create(self):
         from tkinter.simpledialog import askstring
@@ -240,7 +263,7 @@ class PasswordManager(tk.Tk):
         self.destroy()
         
     def show_about(self):
-        messagebox.showinfo("О программе", "PWManager - Менеджер паролей. Версия 1.0. Автор: @MichaelSoftWare2025 на github.")
+        messagebox.showinfo("О программе", "© PWManager team. MIT License.")
         
     def save_password(self, site, password):
         if not site or not password:
