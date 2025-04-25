@@ -3,50 +3,30 @@ from tkinter import messagebox
 import os
 import json
 import random as rand
-import rsa
+from cryptography.fernet import Fernet
 import pyotp as TwoFactorAuth
 import pyperclip
 import string
-import time
 import base64
 
-KEY_SIZE = 2048
-PRIVATE_KEY_FILE = "private_key.key"
-PUBLIC_KEY_FILE = "public_key.key"
+KEY_FILE = "key.key"
 TWOFACTORFILE = "2fa.json"
+        
+class GuiFunctions:
+    def truncate_text(text: str, max_len: int):
+        return text if len(text) <= max_len else text[:max_len - 3] + "..."
 
-if not os.path.exists(PRIVATE_KEY_FILE) or not os.path.exists(PUBLIC_KEY_FILE):
-    public_key, private_key = rsa.newkeys(KEY_SIZE)
-    with open(PUBLIC_KEY_FILE, "wb") as pub_file:
-        pub_file.write(public_key.save_pkcs1())
-    with open(PRIVATE_KEY_FILE, "wb") as priv_file:
-        priv_file.write(private_key.save_pkcs1())
+if not os.path.exists("crypt.key"):
+    key = Fernet.generate_key()
+    try:
+        with open("crypt.key", "wb") as key_file:
+            key_file.write(key)
+    except Exception as e:
+        key = Fernet.generate_key().decode()
 else:
-    with open(PUBLIC_KEY_FILE, "rb") as pub_file:
-        public_key = rsa.PublicKey.load_pkcs1(pub_file.read())
-    with open(PRIVATE_KEY_FILE, "rb") as priv_file:
-        private_key = rsa.PrivateKey.load_pkcs1(priv_file.read())
+    key = open("crypt.key", "rb").read()
 
-class CIPHER:
-    def __init__(self):
-        self.public_key = public_key
-        self.private_key = private_key
-
-    def encrypt(self, message):
-        return rsa.encrypt(message.encode(), self.public_key).hex()
-
-    def decrypt(self, encrypted_message):
-        try:
-            # Check if the encrypted_message is valid hex
-            decrypted = rsa.decrypt(bytes.fromhex(encrypted_message), self.private_key)
-            return decrypted
-        except ValueError as e:
-            print(f"Error: The provided message is not a valid hex string. Error: {e}")
-            print(f"Encrypted message: {encrypted_message}")
-            # Optionally, return None or handle the error as needed
-            return None
-
-cipher = CIPHER()
+cipher = Fernet(key)  # Инициализация Fernet с ключом
 
 PASSWORDS_FILE = "passwords.json"
 
@@ -66,7 +46,7 @@ class PasswordManager(tk.Tk):
         self.geometry("500x650")
         self.iconbitmap("icon.ico")  # Make sure the icon.ico file exists in the same directory
         self.resizable(False, False)
-        self.configure(bg="#1f1f1f")
+        self.config(bg="#1f1f1f")
         self.protocol("WM_DELETE_WINDOW", self.on_exit)
 
         self.site_label = tk.Label(self, text="Сайт:", bg="#1f1f1f", fg="white", font=("Arial", 16))
@@ -108,11 +88,59 @@ class PasswordManager(tk.Tk):
         
         self.towfa_auth_button.pack(pady=10)
         
+        self.search_button = tk.Button(self, text="Поиск", bg="#2196f3", fg="white", font=("Arial", 16),
+                                       command=self.search_gui)
+        
+        self.search_button.pack(pady=10)
+        
         self.bind("<Shift-F3>", self.crash)
         self.bind("<Shift-F2>", self.on_program_exit_event)
+        self.bind("<F11>", self.toogle_fullscreen)
         
     def on_exit(self):
         self.destroy()
+        
+    def toogle_fullscreen(self, event):
+        self.attributes("-fullscreen", not self.attributes("-fullscreen"))
+        
+    def search(self, query):
+        with open(PASSWORDS_FILE, "r") as f:
+            passwords = json.load(f)
+
+        matching_passwords = []
+        for site, password in passwords.items():
+            if query.lower() in site.lower():
+                passw = cipher.decrypt(password.replace("PWManager-Encrypted-Password-v1.0:", "")).decode()
+                matching_passwords.append((site, GuiFunctions.truncate_text(passw, 10), ))
+
+        return matching_passwords if matching_passwords else ["Error", f"Cannot find password by query: {query}"]
+    
+    def search_gui(self):
+        win = tk.Toplevel(self)
+        win.title("Поиск паролей")
+        win.iconbitmap("icon.ico")
+        win.geometry("500x650")
+        win.config(bg="#1f1f1f")
+        
+        search_query = tk.Entry(win)
+        search_query.pack(padx=10, pady=10)
+        search_query.focus_set()
+        
+        results_label = tk.Label(win, text="", bg="#1f1f1f", fg="white", font=("Arial", 16))
+        results_label.pack(padx=10, pady=10)
+        
+        def on_search_query_enter(event):
+            query = search_query.get()
+            results = self.search(query)
+            
+            if isinstance(results[0], str) and results[0] == "Error":
+                results_str = results[1]  # просто текст ошибки
+            else:
+                results_str = "\n".join([f"{site}: {password}" for site, password in results])
+            
+            results_label.config(text=results_str)
+
+        search_query.bind("<Return>", on_search_query_enter)
         
     def on_program_exit_event(self, event, code: str | None = "Closed by user"):
         for widget in self.winfo_children():
@@ -143,7 +171,7 @@ class PasswordManager(tk.Tk):
             messagebox.showerror("Ошибка", "Оба поля обязательны!")
             return
 
-        encrypted_secret = "PWManager-Encrypted-2FA-v1.0:" + cipher.encrypt(secret)
+        encrypted_secret = "PWManager-Encrypted-2FA-v1.0:" + cipher.encrypt(secret.encode()).decode()
 
         if os.path.exists(TWOFACTORFILE):
             with open(TWOFACTORFILE, "r") as f:
@@ -192,7 +220,7 @@ class PasswordManager(tk.Tk):
         def decrypt_2fa_secret(encrypted: str) -> str:
             if encrypted.startswith("PWManager-Encrypted-2FA-v1.0:"):
                 encrypted = encrypted.replace("PWManager-Encrypted-2FA-v1.0:", "")
-            return cipher.decrypt(encrypted)
+            return cipher.decrypt(encrypted.encode()).decode()
 
         def update_codes():
             for site, encrypted_secret in data.items():
@@ -213,7 +241,7 @@ class PasswordManager(tk.Tk):
                 secret = decrypt_2fa_secret(encrypted_secret)
                 topt = TwoFactorAuth.TOTP(secret)
                 code = topt.now()
-            except Exception:
+            except Exception as e:
                 code = "Ошибка"
 
             frame = tk.Frame(scroll_frame, bg="#1f1f1f")
@@ -277,7 +305,7 @@ class PasswordManager(tk.Tk):
             messagebox.showerror("Ошибка", "Пароль для этого сайта уже существует!")
             return
         
-        encrypted_password = "PWManager-Encrypted-Password-v1.0:" + cipher.encrypt(password)
+        encrypted_password = "PWManager-Encrypted-Password-v1.0:" + cipher.encrypt(password.encode()).decode()
         data[site] = encrypted_password
 
         with open(PASSWORDS_FILE, "w") as f:
@@ -291,6 +319,12 @@ class PasswordManager(tk.Tk):
         
         if site not in data:
             messagebox.showerror("Ошибка", "Пароль для этого сайта не найден!")
+            return
+        
+        if messagebox.askyesno("Удаление пароля", "Вы уверены, что хотите удалить этот пароль?"):
+            pass
+        else:
+            messagebox.showinfo("Отмена", "Удаление пароля отменено.")
             return
         
         del data[site]
@@ -316,7 +350,7 @@ class PasswordManager(tk.Tk):
             messagebox.showerror("Ошибка", "Пароль для этого сайта не найден!")
             return
         
-        password = cipher.decrypt(data[site].replace("PWManager-Encrypted-Password-v1.0:", "").replace("PWManager-Encrypted-2FA-v1.0", ""))
+        password = cipher.decrypt(data[site].replace("PWManager-Encrypted-Password-v1.0:", "").replace("PWManager-Encrypted-2FA-v1.0", "").encode()).decode()
         pyperclip.copy(password)
         messagebox.showinfo("Успех", "Пароль скопирован в буфер обмена!")
 
@@ -342,12 +376,15 @@ class PasswordManager(tk.Tk):
         # Создание холста с полосой прокрутки
         canvas = tk.Canvas(view_window, bg="#1f1f1f")
         scrollbar = tk.Scrollbar(view_window, orient=tk.VERTICAL, command=canvas.yview)
+        scrollbar_x = tk.Scrollbar(view_window, orient=tk.HORIZONTAL, command=canvas.xview)
         scroll_frame = tk.Frame(canvas, bg="#1f1f1f")
 
         # Настройка полосы прокрутки
         canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.configure(xscrollcommand=scrollbar_x.set)
 
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
         canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
 
@@ -378,6 +415,11 @@ class PasswordManager(tk.Tk):
             copy_button = tk.Button(frame, text="Копировать", bg="#4caf50", fg="white", font=("Arial", 10),
                                     command=lambda site=site: self.copy_to_clipboard(site))
             copy_button.pack(side=tk.RIGHT, padx=5)
+            
+            delete_button = tk.Button(frame, text="Удалить", bg="#f44336", fg="white", font=("Arial", 10),
+                                      command=lambda site=site: self.delete_password(site))
+            
+            delete_button.pack(side=tk.RIGHT, padx=5)
 
 
         # Обновление прокручиваемой области

@@ -4,7 +4,7 @@
 
 # Игнорируем ключи и конфиденциальные файлы
 /public_key.key
-/private_key.key
+/crypt.key
 /passwords.json
 /2fa.json
 /.vscode

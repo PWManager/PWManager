@@ -2,4 +2,3 @@ cryptography
 Pillow
 pyperclip
 pyotp
-rsa
