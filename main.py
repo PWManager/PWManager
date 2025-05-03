@@ -11,10 +11,7 @@ import base64
 
 KEY_FILE = "key.key"
 TWOFACTORFILE = "2fa.json"
-        
-class GuiFunctions:
-    def truncate_text(text: str, max_len: int):
-        return text if len(text) <= max_len else text[:max_len - 3] + "..."
+PASSWORDS_FILE = "passwords.json"
 
 if not os.path.exists("crypt.key"):
     key = Fernet.generate_key()
@@ -28,8 +25,6 @@ else:
 
 cipher = Fernet(key)  # Инициализация Fernet с ключом
 
-PASSWORDS_FILE = "passwords.json"
-
 # Проверка существования JSON файла
 if not os.path.exists(PASSWORDS_FILE):
     with open(PASSWORDS_FILE, "w") as f:
@@ -38,17 +33,21 @@ if not os.path.exists(PASSWORDS_FILE):
 if not os.path.exists(TWOFACTORFILE):
     with open(TWOFACTORFILE, "w") as f:
         json.dump({}, f)
+        
+class GuiFunctions:
+    def truncate_text(self, text, length):
+        return text if len(text) <= length else text[:length - 3] + "..."
 
 class PasswordManager(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("PWManager")
-        self.geometry("500x650")
+        self.geometry("500x660")
         self.iconbitmap("icon.ico")  # Make sure the icon.ico file exists in the same directory
         self.resizable(False, False)
         self.config(bg="#1f1f1f")
         self.protocol("WM_DELETE_WINDOW", self.on_exit)
-
+        
         self.site_label = tk.Label(self, text="Сайт:", bg="#1f1f1f", fg="white", font=("Arial", 16))
         self.site_label.pack(pady=10)
 
@@ -122,13 +121,6 @@ class PasswordManager(tk.Tk):
         win.geometry("500x650")
         win.config(bg="#1f1f1f")
         
-        search_query = tk.Entry(win)
-        search_query.pack(padx=10, pady=10)
-        search_query.focus_set()
-        
-        results_label = tk.Label(win, text="", bg="#1f1f1f", fg="white", font=("Arial", 16))
-        results_label.pack(padx=10, pady=10)
-        
         def on_search_query_enter(event):
             query = search_query.get()
             results = self.search(query)
@@ -139,20 +131,22 @@ class PasswordManager(tk.Tk):
                 results_str = "\n".join([f"{site}: {password}" for site, password in results])
             
             results_label.config(text=results_str)
+        
+        search_query = tk.Entry(win)
+        search_query.pack(padx=10, pady=10)
+        search_query.focus_set()
+        
+        search_button = tk.Button(win, text="Поиск", bg="#2196f3", fg="white", font=("Arial", 16),
+                                  command=lambda: on_search_query_enter(None))
+        
+        search_button.pack(padx=10, pady=10)
+        
+        results_label = tk.Label(win, text="", bg="#1f1f1f", fg="white", font=("Arial", 16))
+        results_label.pack(padx=10, pady=10)
 
         search_query.bind("<Return>", on_search_query_enter)
         
     def on_program_exit_event(self, event, code: str | None = "Closed by user"):
-        for widget in self.winfo_children():
-            widget.destroy()
-        else:
-            label = tk.Label(self, text="Теперь можно закрыть PWManager через кнопку.", bg="#1f1f1f", fg="white", font=("Arial", 16))
-            label.pack(expand=True)
-            
-            label2 = tk.Label(self, text=f"Код закрытия: {base64.b64encode(code.encode()).decode()}", bg="#1f1f1f", fg="white", font=("Arial", 16))
-            label2.pack(expand=True)
-        
-    def on_program_exit(self, code: str | None = "Closed by user."):
         for widget in self.winfo_children():
             widget.destroy()
         else:

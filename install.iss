@@ -3,7 +3,7 @@
 
 #define MyAppName "PWManager"
 #define MyAppVersion "1.0"
-#define MyAppPublisher "PWManager team."
+#define MyAppPublisher "PWManager team"
 #define MyAppURL "https://github.com/PWManager"
 #define MyAppExeName "PWManager.exe"
 
