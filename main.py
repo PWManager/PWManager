@@ -150,11 +150,21 @@ class PasswordManager(tk.Tk):
         for widget in self.winfo_children():
             widget.destroy()
         else:
-            label = tk.Label(self, text="Теперь можно закрыть PWManager через кнопку.", bg="#1f1f1f", fg="white", font=("Arial", 16))
-            label.pack(expand=True)
+            self.config(bg="blue")
+            label = tk.Label(self, text=":(", bg="blue", fg="white", font=("Arial", 100))
+            label.pack()
             
-            label2 = tk.Label(self, text=f"Код закрытия: {base64.b64encode(code.encode()).decode()}", bg="#1f1f1f", fg="white", font=("Arial", 16))
+            label2 = tk.Label(self, text="Теперь можно закрыть PWManager через кнопку.", bg="blue", fg="white", font=("Arial", 16))
             label2.pack(expand=True)
+            
+            label3 = tk.Label(self, text=f"Код закрытия: {base64.b64encode(code.encode()).decode()}", bg="blue", fg="white", font=("Arial", 16))
+            label3.pack(expand=True)
+            
+            button = tk.Button(self, text="Закрыть", bg="#2196f3", fg="white", font=("Arial", 16),
+                               command=self.on_exit)
+            
+            if self.attributes("-fullscreen"):
+                button.pack(expand=True)
         
     def twofa_create(self):
         from tkinter.simpledialog import askstring
