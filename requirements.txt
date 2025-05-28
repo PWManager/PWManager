@@ -2,3 +2,5 @@ cryptography
 Pillow
 pyperclip
 pyotp
+qrcode
+pillow

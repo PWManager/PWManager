@@ -3,7 +3,7 @@ A Password Manager written on Python and Tkinter!
 
 
 [![Discord](https://img.shields.io/badge/Discord-join%20server-blue)](https://discord.gg/eWKqT4tV6w)
-[![Issues](https://img.shields.io/badge/Bug-report-red)](https://github.com/PWManager/PWManager/issues)
+[![Issues](https://img.shields.io/badge/Issues-red)](https://github.com/PWManager/PWManager/issues)
 
 ## Description
 PWManager is a simple, easy-to-use password manager built using Python and Tkinter. It allows you to store, generate, and manage passwords (and 2fa codes) securely with encryption. The application features:
