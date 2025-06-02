@@ -776,7 +776,7 @@ class PasswordManager(tk.Tk):
         self.destroy()
         
     def show_about(self):
-        messagebox.showinfo("О программе", "© PWManager team. MIT License.")
+        messagebox.showinfo("О программе", "© PWManager team. MIT License. Version 1.1")
         
     def save_password(self, site, password):
         if not site or not password:
