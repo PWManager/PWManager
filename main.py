@@ -58,6 +58,9 @@ if not os.path.exists(TWOFACTORFILE):
     with open(TWOFACTORFILE, "w") as f:
         json.dump({}, f)
         
+if not os.path.exists("extensions"):
+    os.makedirs("extensions")
+        
 class GuiFunctions:
     def truncate_text(self, text, length):
         return text if len(text) <= length else text[:length - 3] + "..."

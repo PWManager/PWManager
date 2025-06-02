@@ -11,6 +11,7 @@
 /PWManager_Installer.exe
 /Output
 /achievements.json
+/extensions
 
 # Игнорируем директории для сборки и дистрибутива
 /build
