@@ -12,6 +12,8 @@
 /Output
 /achievements.json
 /extensions
+/recovery.word
+/master.key
 
 # Игнорируем директории для сборки и дистрибутива
 /build

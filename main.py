@@ -13,6 +13,7 @@ import qrcode
 import sys
 import re
 import importlib.util
+import hashlib
 from PIL import Image, ImageTk
 from win10toast import ToastNotifier
 
@@ -61,6 +62,286 @@ if not os.path.exists(TWOFACTORFILE):
 if not os.path.exists("extensions"):
     os.makedirs("extensions")
         
+MASTER_PASSWORD_FILE = "master.key"
+MAX_ATTEMPTS = 3
+RECOVERY_WORD_FILE = "recovery.word"
+
+class MasterPasswordManager:
+    def __init__(self):
+        self.master_password_file = MASTER_PASSWORD_FILE
+        self.recovery_word_file = RECOVERY_WORD_FILE
+        self.attempts = 0
+        self.ensure_master_password_file()
+        self.ensure_recovery_word_file()
+        
+    def ensure_master_password_file(self):
+        if not os.path.exists(self.master_password_file):
+            with open(self.master_password_file, "w") as f:
+                json.dump({
+                    "hash": "",
+                    "salt": "",
+                    "attempts": 0,
+                    "is_locked": False
+                }, f)
+                
+    def ensure_recovery_word_file(self):
+        if not os.path.exists(self.recovery_word_file):
+            with open(self.recovery_word_file, "w") as f:
+                json.dump({"word": ""}, f)
+                
+    def set_master_password(self, password, recovery_word=None):
+        salt = os.urandom(32)
+        key = hashlib.pbkdf2_hmac(
+            'sha256',
+            password.encode('utf-8'),
+            salt,
+            100000
+        )
+        with open(self.master_password_file, "w") as f:
+            json.dump({
+                "hash": base64.b64encode(key).decode(),
+                "salt": base64.b64encode(salt).decode(),
+                "attempts": 0,
+                "is_locked": False
+            }, f)
+            
+        if recovery_word:
+            encrypted_word = "PWManager-Encrypted-Recovery-v1.0:" + cipher.encrypt(recovery_word.encode()).decode()
+            with open(self.recovery_word_file, "w") as f:
+                json.dump({"word": encrypted_word}, f)
+            
+    def verify_master_password(self, password):
+        try:
+            with open(self.master_password_file, "r") as f:
+                data = json.load(f)
+                
+            if not data["hash"] or not data["salt"]:
+                return True  # Если мастер-пароль не установлен
+                
+            # Проверка блокировки
+            if data["is_locked"]:
+                raise Exception(check_lang(
+                    "Аккаунт заблокирован. Используйте слово восстановления для разблокировки.",
+                    "Account is locked. Use recovery word to unlock."
+                ))
+                
+            salt = base64.b64decode(data["salt"])
+            stored_hash = base64.b64decode(data["hash"])
+            
+            key = hashlib.pbkdf2_hmac(
+                'sha256',
+                password.encode('utf-8'),
+                salt,
+                100000
+            )
+            
+            if key == stored_hash:
+                # Сброс счетчика попыток при успешном входе
+                data["attempts"] = 0
+                data["is_locked"] = False
+                with open(self.master_password_file, "w") as f:
+                    json.dump(data, f)
+                return True
+            else:
+                # Увеличение счетчика попыток
+                data["attempts"] = data.get("attempts", 0) + 1
+                if data["attempts"] >= MAX_ATTEMPTS:
+                    data["is_locked"] = True
+                with open(self.master_password_file, "w") as f:
+                    json.dump(data, f)
+                return False
+        except Exception as e:
+            raise e
+            
+    def verify_recovery_word(self, word):
+        try:
+            with open(self.recovery_word_file, "r") as f:
+                data = json.load(f)
+            if not data["word"]:
+                return False
+                
+            encrypted_word = data["word"]
+            if encrypted_word.startswith("PWManager-Encrypted-Recovery-v1.0:"):
+                encrypted_word = encrypted_word.replace("PWManager-Encrypted-Recovery-v1.0:", "")
+                stored_word = cipher.decrypt(encrypted_word.encode()).decode()
+                
+                if stored_word == word:
+                    # Разблокировка аккаунта при правильном слове
+                    with open(self.master_password_file, "r") as f:
+                        master_data = json.load(f)
+                    master_data["attempts"] = 0
+                    master_data["is_locked"] = False
+                    with open(self.master_password_file, "w") as f:
+                        json.dump(master_data, f)
+                    return True
+            return False
+        except Exception:
+            return False
+            
+    def change_master_password(self, current_password, new_password, new_recovery_word=None):
+        if not self.verify_master_password(current_password):
+            raise Exception(check_lang("Неверный текущий пароль", "Wrong current password"))
+            
+        self.set_master_password(new_password, new_recovery_word)
+        return True
+
+class MasterPasswordWindow(tk.Toplevel):
+    def __init__(self, parent, master_password_manager, on_success):
+        super().__init__(parent)
+        self.title(check_lang("Мастер-пароль", "Master Password"))
+        self.iconbitmap("icon.ico")
+        self.geometry("300x300")
+        self.protocol("WM_DELETE_WINDOW", lambda: exit(1))
+        self.resizable(False, False)
+        self.configure(bg="#1f1f1f")
+        self.master_password_manager = master_password_manager
+        self.on_success = on_success
+        
+        # Проверяем, установлен ли мастер-пароль
+        with open(MASTER_PASSWORD_FILE, "r") as f:
+            data = json.load(f)
+            is_first_time = not data["hash"] or not data["salt"]
+            is_locked = data.get("is_locked", False)
+        
+        if is_first_time:
+            self.setup_first_time()
+        elif is_locked:
+            self.show_recovery()
+        else:
+            self.setup_login()
+            
+    def setup_first_time(self):
+        label = tk.Label(self, 
+                        text=check_lang("Установите мастер-пароль:", "Set master password:"),
+                        bg="#1f1f1f", fg="white", font=("Arial", 12))
+        label.pack(pady=10)
+        
+        self.password_entry = tk.Entry(self, show="*", bg="#1f1f1f", fg="white", font=("Arial", 12))
+        self.password_entry.pack(pady=5)
+        
+        self.confirm_entry = tk.Entry(self, show="*", bg="#1f1f1f", fg="white", font=("Arial", 12))
+        self.confirm_entry.pack(pady=5)
+        
+        recovery_label = tk.Label(self,
+                                text=check_lang("Установите слово для восстановления:", "Set recovery word:"),
+                                bg="#1f1f1f", fg="white", font=("Arial", 12))
+        recovery_label.pack(pady=10)
+        
+        self.recovery_entry = tk.Entry(self, bg="#1f1f1f", fg="white", font=("Arial", 12))
+        self.recovery_entry.pack(pady=5)
+        
+        button = tk.Button(self,
+                         text=check_lang("Установить", "Set"),
+                         command=self.set_password,
+                         bg="#2196f3", fg="white", font=("Arial", 12))
+        button.pack(pady=10)
+        
+    def setup_login(self):
+        label = tk.Label(self,
+                        text=check_lang("Введите мастер-пароль:", "Enter master password:"),
+                        bg="#1f1f1f", fg="white", font=("Arial", 12))
+        label.pack(pady=10)
+        
+        self.password_entry = tk.Entry(self, show="*", bg="#1f1f1f", fg="white", font=("Arial", 12))
+        self.password_entry.pack(pady=5)
+        
+        button = tk.Button(self,
+                         text=check_lang("Войти", "Login"),
+                         command=self.verify_password,
+                         bg="#2196f3", fg="white", font=("Arial", 12))
+        button.pack(pady=10)
+        
+        recovery_button = tk.Button(self,
+                                  text=check_lang("Восстановить доступ", "Recover Access"),
+                                  command=self.show_recovery,
+                                  bg="#4caf50", fg="white", font=("Arial", 12))
+        recovery_button.pack(pady=5)
+        
+        # Привязываем Enter к кнопке входа
+        self.password_entry.bind('<Return>', lambda e: self.verify_password())
+        
+    def show_recovery(self):
+        recovery_window = tk.Toplevel(self)
+        recovery_window.title(check_lang("Восстановление доступа", "Access Recovery"))
+        recovery_window.iconbitmap("icon.ico")
+        recovery_window.geometry("300x200")
+        recovery_window.configure(bg="#1f1f1f")
+        
+        label = tk.Label(recovery_window,
+                        text=check_lang("Аккаунт заблокирован. Введите слово для восстановления:", "Account is locked. Enter recovery word:"),
+                        bg="#1f1f1f", fg="white", font=("Arial", 12))
+        label.pack(pady=10)
+        
+        entry = tk.Entry(recovery_window, bg="#1f1f1f", fg="white", font=("Arial", 12))
+        entry.pack(pady=5)
+        
+        def verify_recovery():
+            word = entry.get()
+            if self.master_password_manager.verify_recovery_word(word):
+                messagebox.showinfo(check_lang("Успех", "Success"),
+                                  check_lang("Аккаунт разблокирован", "Account unlocked"))
+                self.on_success()
+                recovery_window.destroy()
+                self.destroy()
+            else:
+                messagebox.showerror(check_lang("Ошибка", "Error"),
+                                   check_lang("Неверное слово восстановления", "Wrong recovery word"))
+                
+        button = tk.Button(recovery_window,
+                         text=check_lang("Разблокировать", "Unlock"),
+                         command=verify_recovery,
+                         bg="#2196f3", fg="white", font=("Arial", 12))
+        button.pack(pady=10)
+        
+        # Привязываем Enter к кнопке разблокировки
+        entry.bind('<Return>', lambda e: verify_recovery())
+        
+    def set_password(self):
+        password = self.password_entry.get()
+        confirm = self.confirm_entry.get()
+        recovery_word = self.recovery_entry.get()
+        
+        if not password or not confirm or not recovery_word:
+            messagebox.showerror(check_lang("Ошибка", "Error"),
+                               check_lang("Заполните все поля", "Fill all fields"))
+            return
+            
+        if password != confirm:
+            messagebox.showerror(check_lang("Ошибка", "Error"),
+                               check_lang("Пароли не совпадают", "Passwords don't match"))
+            return
+            
+        if len(password) < 8:
+            messagebox.showerror(check_lang("Ошибка", "Error"),
+                               check_lang("Пароль должен быть не менее 8 символов", "Password must be at least 8 characters"))
+            return
+            
+        self.master_password_manager.set_master_password(password, recovery_word)
+        messagebox.showinfo(check_lang("Успех", "Success"),
+                          check_lang("Мастер-пароль установлен", "Master password set"))
+        self.on_success()
+        self.destroy()
+        
+    def verify_password(self):
+        password = self.password_entry.get()
+        
+        if not password:
+            messagebox.showerror(check_lang("Ошибка", "Error"),
+                               check_lang("Введите пароль", "Enter password"))
+            return
+            
+        try:
+            if self.master_password_manager.verify_master_password(password):
+                self.on_success()
+                self.destroy()
+            else:
+                messagebox.showerror(check_lang("Ошибка", "Error"),
+                                   check_lang("Неверный пароль", "Wrong password"))
+                self.password_entry.delete(0, tk.END)
+        except Exception as e:
+            messagebox.showerror(check_lang("Ошибка", "Error"), str(e))
+            self.password_entry.delete(0, tk.END)
+
 class GuiFunctions:
     def truncate_text(self, text, length):
         return text if len(text) <= length else text[:length - 3] + "..."
@@ -223,6 +504,16 @@ class PasswordManager(tk.Tk):
         self.config(bg="#1f1f1f")
         self.protocol("WM_DELETE_WINDOW", self.on_exit)
         
+        # Initialize master password manager
+        self.master_password_manager = MasterPasswordManager()
+        
+        # Show master password window first
+        self.withdraw()  # Hide main window
+        self.master_password_window = MasterPasswordWindow(self, self.master_password_manager, self.on_master_password_success)
+        
+    def on_master_password_success(self):
+        self.deiconify()  # Show main window
+        
         # Initialize extension manager with cipher
         self.extension_manager = ExtensionManager(cipher)
         self.extension_manager.load_extensions()
@@ -230,6 +521,10 @@ class PasswordManager(tk.Tk):
         # Bind Shift+F8 to extension menu
         self.bind("<Shift-F8>", self.show_extension_menu)
         
+        # Initialize GUI components
+        self.initialize_gui()
+        
+    def initialize_gui(self):      
         self.site_label = tk.Label(self, text=check_lang("Сайт:", "Site:"), bg="#1f1f1f", fg="white", font=("Arial", 16))
         self.site_label.pack(pady=10)
 
@@ -282,6 +577,12 @@ class PasswordManager(tk.Tk):
                                            command=self.towfa_auth)
         
         self.towfa_auth_button.pack(pady=10)
+        
+        self.change_master_button = tk.Button(self,
+                                            text=check_lang("Сменить мастер-пароль", "Change Master Password"),
+                                            command=self.show_change_master_password,
+                                            bg="#2196f3", fg="white", font=("Arial", 16))
+        self.change_master_button.pack(pady=5)
         
         self.bind("<Shift-F3>", self.crash)
         self.bind("<Shift-F2>", self.on_program_exit_event)
@@ -731,6 +1032,56 @@ class PasswordManager(tk.Tk):
         if window:
             window.destroy()
         self.show_extension_menu()
+
+    def show_change_master_password(self):
+        change_window = tk.Toplevel(self)
+        change_window.title(check_lang("Смена мастер-пароля", "Change Master Password"))
+        change_window.geometry("300x200")
+        change_window.configure(bg="#1f1f1f")
+        
+        current_label = tk.Label(change_window,
+                               text=check_lang("Текущий пароль:", "Current password:"),
+                               bg="#1f1f1f", fg="white", font=("Arial", 12))
+        current_label.pack(pady=10)
+        
+        current_entry = tk.Entry(change_window, show="*", bg="#1f1f1f", fg="white", font=("Arial", 12))
+        current_entry.pack(pady=5)
+        
+        new_label = tk.Label(change_window,
+                           text=check_lang("Новый пароль:", "New password:"),
+                           bg="#1f1f1f", fg="white", font=("Arial", 12))
+        new_label.pack(pady=10)
+        
+        new_entry = tk.Entry(change_window, show="*", bg="#1f1f1f", fg="white", font=("Arial", 12))
+        new_entry.pack(pady=5)
+        
+        def change_password():
+            current = current_entry.get()
+            new = new_entry.get()
+            
+            if not current or not new:
+                messagebox.showerror(check_lang("Ошибка", "Error"),
+                                   check_lang("Заполните все поля", "Fill all fields"))
+                return
+                
+            if len(new) < 8:
+                messagebox.showerror(check_lang("Ошибка", "Error"),
+                                   check_lang("Новый пароль должен быть не менее 8 символов", "New password must be at least 8 characters"))
+                return
+                
+            try:
+                self.master_password_manager.change_master_password(current, new)
+                messagebox.showinfo(check_lang("Успех", "Success"),
+                                  check_lang("Мастер-пароль успешно изменен", "Master password successfully changed"))
+                change_window.destroy()
+            except Exception as e:
+                messagebox.showerror(check_lang("Ошибка", "Error"), str(e))
+                
+        button = tk.Button(change_window,
+                         text=check_lang("Изменить", "Change"),
+                         command=change_password,
+                         bg="#2196f3", fg="white", font=("Arial", 12))
+        button.pack(pady=10)
 
 if __name__ == "__main__":
     app = PasswordManager()
