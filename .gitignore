@@ -10,6 +10,7 @@
 /.vscode
 /PWManager_Installer.exe
 /Output
+/achievements.json
 
 # Игнорируем директории для сборки и дистрибутива
 /build

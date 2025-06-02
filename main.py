@@ -10,7 +10,11 @@ import string
 import base64
 import locale
 import qrcode
+import sys
+import re
+import importlib.util
 from PIL import Image, ImageTk
+from win10toast import ToastNotifier
 
 def get_system_language():
     # Try the new recommended approach first
@@ -21,10 +25,18 @@ def get_system_language():
     except:
         pass
 
-KEY_FILE = "key.key"
+KEY_FILE = "crypt.key"
 TWOFACTORFILE = "2fa.json"
 PASSWORDS_FILE = "passwords.json"
-LANG_FILE = "lang"
+ACHIEVEMENTS_FILE = "achievements.json"
+achievements = []
+
+if not os.path.exists(ACHIEVEMENTS_FILE):
+    with open(ACHIEVEMENTS_FILE, "w") as f:
+        json.dump([], f)
+else:
+    with open(ACHIEVEMENTS_FILE, "r") as f:
+        achievements = json.load(f)
 
 if not os.path.exists("crypt.key"):
     key = Fernet.generate_key()
@@ -36,9 +48,8 @@ if not os.path.exists("crypt.key"):
 else:
     key = open("crypt.key", "rb").read()
 
-cipher = Fernet(key)  # Инициализация Fernet с ключом
+cipher = Fernet(key)
 
-# Проверка существования JSON файла
 if not os.path.exists(PASSWORDS_FILE):
     with open(PASSWORDS_FILE, "w") as f:
         json.dump({}, f)
@@ -50,6 +61,29 @@ if not os.path.exists(TWOFACTORFILE):
 class GuiFunctions:
     def truncate_text(self, text, length):
         return text if len(text) <= length else text[:length - 3] + "..."
+    
+    def new_achievement(self, title, description):
+        try:
+            with open(ACHIEVEMENTS_FILE, "r", encoding="utf-8") as f:
+                achievements = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            achievements = []
+
+        if not any(item["title"] == title for item in achievements):
+            signature = f"{rand.randint(0, 9)}{base64.b64encode(f"{sys.version}".encode()).decode()}"
+            achievements.append({"title": title, "description": description, "signature": signature})
+            
+            with open(ACHIEVEMENTS_FILE, "w", encoding="utf-8") as f:
+                json.dump(achievements, f, indent=4, ensure_ascii=False)
+            
+            toast = ToastNotifier()
+            toast.show_toast(
+                title,
+                description,
+                icon_path="icon.ico",\
+                duration=2,
+                threaded=True
+            )
     
 def change_lang():
     lang = get_system_language()
@@ -69,6 +103,113 @@ def check_lang(russian, english):
     else:
         return english
 
+class PasswordAPI:
+    def __init__(self, cipher):
+        self.cipher = cipher
+        self.passwords_file = PASSWORDS_FILE
+        
+    def get_all_passwords(self):
+        """Get all passwords as a dictionary {site: password}"""
+        try:
+            with open(self.passwords_file, "r") as f:
+                data = json.load(f)
+            return {site: self.cipher.decrypt(encrypted.replace("PWManager-Encrypted-Password-v1.0:", "").encode()).decode()
+                   for site, encrypted in data.items()}
+        except Exception as e:
+            raise Exception(f"Error getting passwords: {str(e)}")
+            
+    def get_password(self, site):
+        """Get password for specific site"""
+        try:
+            with open(self.passwords_file, "r") as f:
+                data = json.load(f)
+            if site not in data:
+                raise Exception(f"Password for {site} not found")
+            return self.cipher.decrypt(data[site].replace("PWManager-Encrypted-Password-v1.0:", "").encode()).decode()
+        except Exception as e:
+            raise Exception(f"Error getting password: {str(e)}")
+            
+    def add_password(self, site, password):
+        """Add new password"""
+        try:
+            with open(self.passwords_file, "r") as f:
+                data = json.load(f)
+            if site in data:
+                raise Exception(f"Password for {site} already exists")
+            encrypted_password = "PWManager-Encrypted-Password-v1.0:" + self.cipher.encrypt(password.encode()).decode()
+            data[site] = encrypted_password
+            with open(self.passwords_file, "w") as f:
+                json.dump(data, f, indent=4)
+        except Exception as e:
+            raise Exception(f"Error adding password: {str(e)}")
+            
+    def update_password(self, site, new_password):
+        """Update existing password"""
+        try:
+            with open(self.passwords_file, "r") as f:
+                data = json.load(f)
+            if site not in data:
+                raise Exception(f"Password for {site} not found")
+            encrypted_password = "PWManager-Encrypted-Password-v1.0:" + self.cipher.encrypt(new_password.encode()).decode()
+            data[site] = encrypted_password
+            with open(self.passwords_file, "w") as f:
+                json.dump(data, f, indent=4)
+        except Exception as e:
+            raise Exception(f"Error updating password: {str(e)}")
+            
+    def delete_password(self, site):
+        """Delete password"""
+        try:
+            with open(self.passwords_file, "r") as f:
+                data = json.load(f)
+            if site not in data:
+                raise Exception(f"Password for {site} not found")
+            del data[site]
+            with open(self.passwords_file, "w") as f:
+                json.dump(data, f, indent=4)
+        except Exception as e:
+            raise Exception(f"Error deleting password: {str(e)}")
+
+class ExtensionManager:
+    def __init__(self, cipher):
+        self.extensions = {}
+        self.extensions_dir = "extensions"
+        self.password_api = PasswordAPI(cipher)
+        self.ensure_extensions_dir()
+        
+    def ensure_extensions_dir(self):
+        if not os.path.exists(self.extensions_dir):
+            os.makedirs(self.extensions_dir)
+            
+    def load_extensions(self):
+        self.extensions.clear()
+        for filename in os.listdir(self.extensions_dir):
+            if filename.endswith('.py'):
+                try:
+                    module_name = filename[:-3]
+                    file_path = os.path.join(self.extensions_dir, filename)
+                    
+                    spec = importlib.util.spec_from_file_location(module_name, file_path)
+                    module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(module)
+                    
+                    if hasattr(module, 'Extension'):
+                        extension = module.Extension(self.password_api)
+                        self.extensions[module_name] = extension
+                except Exception as e:
+                    print(f"Error loading extension {filename}: {str(e)}")
+                    
+    def run_extension(self, extension_name):
+        if extension_name in self.extensions:
+            try:
+                self.extensions[extension_name].run()
+            except Exception as e:
+                messagebox.showerror(check_lang("Ошибка расширения", "Extension Error"), 
+                                   f"{check_lang('Ошибка при запуске расширения:', 'Error running extension:')} {str(e)}")
+        else:
+            messagebox.showerror(check_lang("Ошибка", "Error"), 
+                               check_lang("Расширение не найдено", "Extension not found"))
+
 class PasswordManager(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -78,6 +219,13 @@ class PasswordManager(tk.Tk):
         self.resizable(False, False)
         self.config(bg="#1f1f1f")
         self.protocol("WM_DELETE_WINDOW", self.on_exit)
+        
+        # Initialize extension manager with cipher
+        self.extension_manager = ExtensionManager(cipher)
+        self.extension_manager.load_extensions()
+        
+        # Bind Shift+F8 to extension menu
+        self.bind("<Shift-F8>", self.show_extension_menu)
         
         self.site_label = tk.Label(self, text=check_lang("Сайт:", "Site:"), bg="#1f1f1f", fg="white", font=("Arial", 16))
         self.site_label.pack(pady=10)
@@ -90,6 +238,20 @@ class PasswordManager(tk.Tk):
 
         self.password_entry = tk.Entry(self, bg="#1f1f1f", fg="white", font=("Arial", 16))
         self.password_entry.pack(pady=10)
+        
+        # Add password strength indicator
+        self.strength_frame = tk.Frame(self, bg="#1f1f1f")
+        self.strength_frame.pack(pady=5)
+        
+        self.strength_label = tk.Label(self.strength_frame, text=check_lang("Сила пароля:", "Password Strength:"), 
+                                     bg="#1f1f1f", fg="white", font=("Arial", 12))
+        self.strength_label.pack(side=tk.LEFT, padx=5)
+        
+        self.strength_indicator = tk.Label(self.strength_frame, text="", bg="#1f1f1f", fg="white", font=("Arial", 12))
+        self.strength_indicator.pack(side=tk.LEFT, padx=5)
+        
+        # Bind password entry to strength check
+        self.password_entry.bind('<KeyRelease>', self.check_password_strength)
 
         self.save_button = tk.Button(self, text=check_lang("Сохранить пароль", "Save Password"), bg="#2196f3", fg="white", font=("Arial", 16),
                                    command=self.save_gui_password)
@@ -157,6 +319,8 @@ class PasswordManager(tk.Tk):
             label4.image = qr_img_tk
             
             label4.pack(expand=True)
+            
+            GuiFunctions.new_achievement(self, check_lang("Опа а что тут?", "Oops, what's here?"), check_lang("Пользователь крашнул программу!", "User crash program!"))
             
             button = tk.Button(self, text=check_lang("Закрыть", "Close"), bg="#2196f3", fg="white", font=("Arial", 16),
                                command=self.on_exit)
@@ -427,6 +591,143 @@ class PasswordManager(tk.Tk):
             canvas.yview_scroll(-1 * (event.delta // 120), "units")
 
         canvas.bind_all("<MouseWheel>", on_mouse_scroll)
+
+    def check_password_strength(self, event=None):
+        password = self.password_entry.get()
+        if not password:
+            self.strength_indicator.config(text="", fg="white")
+            return
+            
+        # Initialize score
+        score = 0
+        feedback = []
+        
+        # Length check
+        if len(password) >= 8:
+            score += 1
+        else:
+            feedback.append(check_lang("Длина менее 8 символов", "Length less than 8 characters"))
+            
+        # Uppercase check
+        if re.search(r'[A-Z]', password):
+            score += 1
+        else:
+            feedback.append(check_lang("Нет заглавных букв", "No uppercase letters"))
+            
+        # Lowercase check
+        if re.search(r'[a-z]', password):
+            score += 1
+        else:
+            feedback.append(check_lang("Нет строчных букв", "No lowercase letters"))
+            
+        # Numbers check
+        if re.search(r'\d', password):
+            score += 1
+        else:
+            feedback.append(check_lang("Нет цифр", "No numbers"))
+            
+        # Special characters check
+        if re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
+            score += 1
+        else:
+            feedback.append(check_lang("Нет специальных символов", "No special characters"))
+            
+        # Set strength indicator
+        if score == 0:
+            strength = check_lang("Очень слабый", "Very Weak")
+            color = "#ff0000"  # Red
+        elif score == 1:
+            strength = check_lang("Слабый", "Weak")
+            color = "#ff6b6b"  # Light Red
+        elif score == 2:
+            strength = check_lang("Средний", "Medium")
+            color = "#ffd700"  # Gold
+        elif score == 3:
+            strength = check_lang("Хороший", "Good")
+            color = "#90ee90"  # Light Green
+        elif score == 4:
+            strength = check_lang("Сильный", "Strong")
+            color = "#32cd32"  # Lime Green
+        else:
+            strength = check_lang("Очень сильный", "Very Strong")
+            color = "#008000"  # Green
+            
+        self.strength_indicator.config(text=strength, fg=color)
+        
+        # Add tooltip with feedback
+        if feedback:
+            tooltip_text = "\n".join(feedback)
+            self.strength_indicator.config(text=f"{strength} ({tooltip_text})")
+
+    def show_extension_menu(self, event=None):
+        extension_window = tk.Toplevel(self)
+        extension_window.title(check_lang("Расширения", "Extensions"))
+        extension_window.geometry("400x500")
+        extension_window.iconbitmap("icon.ico")
+        extension_window.configure(bg="#1f1f1f")
+        
+        # Add title
+        title_label = tk.Label(extension_window, 
+                             text=check_lang("Доступные расширения:", "Available Extensions:"),
+                             bg="#1f1f1f", fg="white", font=("Arial", 14))
+        title_label.pack(pady=10)
+        
+        # Create scrollable frame for extensions
+        canvas = tk.Canvas(extension_window, bg="#1f1f1f")
+        scrollbar = tk.Scrollbar(extension_window, orient=tk.VERTICAL, command=canvas.yview)
+        scroll_frame = tk.Frame(canvas, bg="#1f1f1f")
+        
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
+        
+        # Add extension buttons
+        for ext_name, extension in self.extension_manager.extensions.items():
+            frame = tk.Frame(scroll_frame, bg="#1f1f1f")
+            frame.pack(fill=tk.X, pady=5, padx=10)
+            
+            # Extension name and description
+            info_frame = tk.Frame(frame, bg="#1f1f1f")
+            info_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            
+            name_label = tk.Label(info_frame, text=ext_name, 
+                                bg="#1f1f1f", fg="white", font=("Arial", 12))
+            name_label.pack(anchor="w")
+            
+            if hasattr(extension, 'description'):
+                desc_label = tk.Label(info_frame, text=extension.description,
+                                    bg="#1f1f1f", fg="gray", font=("Arial", 10))
+                desc_label.pack(anchor="w")
+            
+            # Run button
+            run_button = tk.Button(frame, 
+                                 text=check_lang("Запустить", "Run"),
+                                 bg="#2196f3", fg="white",
+                                 command=lambda name=ext_name: self.extension_manager.run_extension(name))
+            run_button.pack(side=tk.RIGHT, padx=5)
+        
+        # Add refresh button
+        refresh_button = tk.Button(extension_window,
+                                 text=check_lang("Обновить список", "Refresh List"),
+                                 bg="#4caf50", fg="white",
+                                 command=lambda: self.refresh_extensions(extension_window))
+        refresh_button.pack(pady=10)
+        
+        # Configure scrolling
+        scroll_frame.update_idletasks()
+        canvas.config(scrollregion=canvas.bbox("all"))
+        
+        def on_mouse_scroll(event):
+            canvas.yview_scroll(-1 * (event.delta // 120), "units")
+        
+        canvas.bind_all("<MouseWheel>", on_mouse_scroll)
+        
+    def refresh_extensions(self, window=None):
+        self.extension_manager.load_extensions()
+        if window:
+            window.destroy()
+        self.show_extension_menu()
 
 if __name__ == "__main__":
     app = PasswordManager()
