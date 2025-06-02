@@ -16,6 +16,7 @@ import importlib.util
 import hashlib
 from PIL import Image, ImageTk
 from win10toast import ToastNotifier
+import datetime
 
 def get_system_language():
     # Try the new recommended approach first
@@ -29,6 +30,7 @@ def get_system_language():
 KEY_FILE = "crypt.key"
 TWOFACTORFILE = "2fa.json"
 PASSWORDS_FILE = "passwords.json"
+PASSWORD_HISTORY_FILE = "password_history.json"
 ACHIEVEMENTS_FILE = "achievements.json"
 achievements = []
 
@@ -494,6 +496,70 @@ class ExtensionManager:
             messagebox.showerror(check_lang("Ошибка", "Error"), 
                                check_lang("Расширение не найдено", "Extension not found"))
 
+class PasswordHistory:
+    def __init__(self, cipher):
+        self.cipher = cipher
+        self.history_file = PASSWORD_HISTORY_FILE
+        self.ensure_history_file()
+        
+    def ensure_history_file(self):
+        if not os.path.exists(self.history_file):
+            with open(self.history_file, "w") as f:
+                json.dump({}, f)
+                
+    def add_to_history(self, site, password):
+        try:
+            with open(self.history_file, "r") as f:
+                history = json.load(f)
+                
+            if site not in history:
+                history[site] = []
+                
+            # Шифруем пароль перед сохранением
+            encrypted_password = "PWManager-Encrypted-Password-v1.0:" + self.cipher.encrypt(password.encode()).decode()
+            
+            # Добавляем запись с временной меткой
+            history[site].append({
+                "password": encrypted_password,
+                "timestamp": str(datetime.datetime.now())
+            })
+            
+            # Ограничиваем историю последними 5 паролями
+            if len(history[site]) > 5:
+                history[site] = history[site][-5:]
+                
+            with open(self.history_file, "w") as f:
+                json.dump(history, f, indent=4)
+                
+        except Exception as e:
+            print(f"Error adding to history: {str(e)}")
+            
+    def get_history(self, site):
+        try:
+            with open(self.history_file, "r") as f:
+                history = json.load(f)
+                
+            if site not in history:
+                return []
+                
+            # Расшифровываем пароли
+            decrypted_history = []
+            for entry in history[site]:
+                try:
+                    password = self.cipher.decrypt(entry["password"].replace("PWManager-Encrypted-Password-v1.0:", "").encode()).decode()
+                    decrypted_history.append({
+                        "password": password,
+                        "timestamp": entry["timestamp"]
+                    })
+                except:
+                    continue
+                    
+            return decrypted_history
+            
+        except Exception as e:
+            print(f"Error getting history: {str(e)}")
+            return []
+
 class PasswordManager(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -506,6 +572,9 @@ class PasswordManager(tk.Tk):
         
         # Initialize master password manager
         self.master_password_manager = MasterPasswordManager()
+        
+        # Initialize password history
+        self.password_history = PasswordHistory(cipher)
         
         # Show master password window first
         self.withdraw()  # Hide main window
@@ -722,7 +791,7 @@ class PasswordManager(tk.Tk):
 
             button = tk.Button(frame, text=check_lang("Копировать", "Copy"), command=lambda c=code: pyperclip.copy(c),
                             bg="#2196f3", fg="white", font=("Arial", 10))
-            button.pack(side=tk.RIGHT)
+            button.pack(side=tk.RIGHT, padx=5)
             
             def delete_site(site_name=site, frame_to_destroy=frame):
                 if messagebox.askyesno(check_lang("Удаление", "Delete"), check_lang(f"Удалить 2FA ключ для '{site_name}'?", f"Delete 2FA key for '{site_name}'?")):
@@ -772,8 +841,9 @@ class PasswordManager(tk.Tk):
             data = json.load(f)
         
         if site in data:
-            messagebox.showerror(check_lang("Ошибка", "Error"), check_lang("Пароль для этого сайта уже существует!", "Password for this site already exists!"))
-            return
+            # Если пароль уже существует, добавляем его в историю
+            old_password = cipher.decrypt(data[site].replace("PWManager-Encrypted-Password-v1.0:", "").encode()).decode()
+            self.password_history.add_to_history(site, old_password)
         
         encrypted_password = "PWManager-Encrypted-Password-v1.0:" + cipher.encrypt(password.encode()).decode()
         data[site] = encrypted_password
@@ -881,6 +951,10 @@ class PasswordManager(tk.Tk):
             copy_button = tk.Button(frame, text=check_lang("Копировать", "Copy"), bg="#4caf50", fg="white", font=("Arial", 10),
                                     command=lambda site=site: self.copy_to_clipboard(site))
             copy_button.pack(side=tk.RIGHT, padx=5)
+            
+            history_button = tk.Button(frame, text=check_lang("История", "History"), bg="#ff9800", fg="white", font=("Arial", 10),
+                                     command=lambda s=site: self.show_password_history(s))
+            history_button.pack(side=tk.RIGHT, padx=5)
             
             delete_button = tk.Button(frame, text=check_lang("Удалить", "Delete"), bg="#f44336", fg="white", font=("Arial", 10),
                                       command=lambda site=site: self.delete_password(site))
@@ -1082,6 +1156,115 @@ class PasswordManager(tk.Tk):
                          command=change_password,
                          bg="#2196f3", fg="white", font=("Arial", 12))
         button.pack(pady=10)
+
+    def show_password_history(self, site):
+        history = self.password_history.get_history(site)
+        if not history:
+            messagebox.showinfo(check_lang("История", "History"), 
+                              check_lang("История изменений пароля пуста", "Password change history is empty"))
+            return
+            
+        history_window = tk.Toplevel(self)
+        history_window.title(check_lang(f"История пароля - {site}", f"Password History - {site}"))
+        history_window.iconbitmap("icon.ico")
+        history_window.geometry("400x300")
+        history_window.configure(bg="#1f1f1f")
+        
+        # Создаем canvas и scrollbar
+        canvas = tk.Canvas(history_window, bg="#1f1f1f", highlightthickness=0)
+        scrollbar = tk.Scrollbar(history_window, orient=tk.VERTICAL, command=canvas.yview)
+        content_frame = tk.Frame(canvas, bg="#1f1f1f")
+        
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        canvas_frame = canvas.create_window((0, 0), window=content_frame, anchor="nw", width=canvas.winfo_reqwidth())
+        
+        # Добавляем заголовок
+        header_label = tk.Label(content_frame,
+                              text=check_lang("История изменений пароля:", "Password Change History:"),
+                              bg="#1f1f1f", fg="white", font=("Arial", 12, "bold"))
+        header_label.pack(pady=(10, 10))
+        
+        # Отображаем историю
+        for entry in reversed(history):  # Показываем в обратном порядке (новые сверху)
+            frame = tk.Frame(content_frame, bg="#2d2d2d", padx=10, pady=5)
+            frame.pack(fill=tk.X, pady=5, padx=10)
+            
+            # Временная метка
+            timestamp = datetime.datetime.strptime(entry["timestamp"], "%Y-%m-%d %H:%M:%S.%f")
+            time_str = timestamp.strftime("%d.%m.%Y %H:%M:%S")
+            
+            time_label = tk.Label(frame,
+                                text=time_str,
+                                bg="#2d2d2d", fg="white", font=("Arial", 10))
+            time_label.pack(side=tk.LEFT)
+            
+            # Пароль
+            password_var = tk.StringVar(value="*" * len(entry["password"]))
+            is_visible = [False]
+            
+            password_label = tk.Label(frame,
+                                    textvariable=password_var,
+                                    bg="#2d2d2d", fg="white", font=("Arial", 10))
+            password_label.pack(side=tk.LEFT, padx=10)
+            
+            def toggle_password(p=entry["password"], var=password_var, flag=is_visible):
+                flag[0] = not flag[0]
+                var.set(p if flag[0] else "*" * len(p))
+            
+            # Кнопки
+            toggle_button = tk.Button(frame,
+                                    text="👁",
+                                    command=toggle_password,
+                                    bg="#2196f3", fg="white", font=("Arial", 8),
+                                    width=2)
+            toggle_button.pack(side=tk.LEFT, padx=5)
+            
+            copy_button = tk.Button(frame,
+                                  text=check_lang("Копировать", "Copy"),
+                                  command=lambda p=entry["password"]: pyperclip.copy(p),
+                                  bg="#4caf50", fg="white", font=("Arial", 8))
+            copy_button.pack(side=tk.LEFT, padx=5)
+            
+            restore_button = tk.Button(frame,
+                                     text=check_lang("Восстановить", "Restore"),
+                                     command=lambda p=entry["password"]: self.restore_password(site, p, history_window),
+                                     bg="#ff9800", fg="white", font=("Arial", 8))
+            restore_button.pack(side=tk.LEFT, padx=5)
+        
+        # Настраиваем прокрутку
+        def configure_scroll(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            canvas.itemconfig(canvas_frame, width=event.width-20)
+        
+        content_frame.bind("<Configure>", configure_scroll)
+        canvas.bind("<Configure>", configure_scroll)
+        
+        def on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        
+        canvas.bind_all("<MouseWheel>", on_mousewheel)
+        
+        # Кнопка закрытия
+        close_button = tk.Button(history_window,
+                               text=check_lang("Закрыть", "Close"),
+                               command=history_window.destroy,
+                               bg="#2196f3", fg="white", font=("Arial", 12))
+        close_button.pack(pady=10)
+        
+        def on_close():
+            canvas.unbind_all("<MouseWheel>")
+            history_window.destroy()
+            
+        history_window.protocol("WM_DELETE_WINDOW", on_close)
+
+    def restore_password(self, site, password, history_window):
+        if messagebox.askyesno(check_lang("Подтверждение", "Confirmation"),
+                              check_lang("Восстановить этот пароль?", "Restore this password?")):
+            self.save_password(site, password)
+            history_window.destroy()
 
 if __name__ == "__main__":
     app = PasswordManager()

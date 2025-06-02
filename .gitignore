@@ -14,6 +14,7 @@
 /extensions
 /recovery.word
 /master.key
+/password_history.json
 
 # Игнорируем директории для сборки и дистрибутива
 /build
