@@ -16,6 +16,7 @@ import importlib.util
 import hashlib
 from PIL import Image, ImageTk
 from win10toast import ToastNotifier
+import datetime
 
 def get_system_language():
     # Try the new recommended approach first
@@ -498,8 +499,8 @@ class PasswordManager(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("PWManager")
-        self.geometry("500x660")
-        self.iconbitmap("icon.ico")  # Make sure the icon.ico file exists in the same directory
+        self.geometry("500x800")
+        self.iconbitmap("icon.ico")
         self.resizable(False, False)
         self.config(bg="#1f1f1f")
         self.protocol("WM_DELETE_WINDOW", self.on_exit)
@@ -524,7 +525,7 @@ class PasswordManager(tk.Tk):
         # Initialize GUI components
         self.initialize_gui()
         
-    def initialize_gui(self):      
+    def initialize_gui(self):
         self.site_label = tk.Label(self, text=check_lang("Сайт:", "Site:"), bg="#1f1f1f", fg="white", font=("Arial", 16))
         self.site_label.pack(pady=10)
 
@@ -577,6 +578,20 @@ class PasswordManager(tk.Tk):
                                            command=self.towfa_auth)
         
         self.towfa_auth_button.pack(pady=10)
+        
+        # Add export/import buttons
+        self.export_button = tk.Button(self,
+                                     text=check_lang("Экспорт данных", "Export Data"),
+                                     command=self.show_export_menu,
+                                     bg="#2196f3", fg="white", font=("Arial", 16))
+        self.export_button.pack(pady=5)
+        
+        self.import_button = tk.Button(self,
+                                     text=check_lang("Импорт данных", "Import Data"),
+                                     command=self.show_import_menu,
+                                     bg="#2196f3", fg="white", font=("Arial", 16))
+        self.import_button.pack(pady=5)
+        
         
         self.change_master_button = tk.Button(self,
                                             text=check_lang("Сменить мастер-пароль", "Change Master Password"),
@@ -722,7 +737,7 @@ class PasswordManager(tk.Tk):
 
             button = tk.Button(frame, text=check_lang("Копировать", "Copy"), command=lambda c=code: pyperclip.copy(c),
                             bg="#2196f3", fg="white", font=("Arial", 10))
-            button.pack(side=tk.RIGHT)
+            button.pack(side=tk.RIGHT, padx=5)
             
             def delete_site(site_name=site, frame_to_destroy=frame):
                 if messagebox.askyesno(check_lang("Удаление", "Delete"), check_lang(f"Удалить 2FA ключ для '{site_name}'?", f"Delete 2FA key for '{site_name}'?")):
@@ -839,62 +854,126 @@ class PasswordManager(tk.Tk):
         view_window = tk.Toplevel(self)
         view_window.iconbitmap("icon.ico")
         view_window.title(check_lang("Просмотр паролей (PWManager)", "View Passwords (PWManager)"))
-        view_window.geometry("500x500")
+        view_window.geometry("600x500")
         view_window.configure(bg="#1f1f1f")
 
-        canvas = tk.Canvas(view_window, bg="#1f1f1f")
-        scrollbar = tk.Scrollbar(view_window, orient=tk.VERTICAL, command=canvas.yview)
-        scrollbar_x = tk.Scrollbar(view_window, orient=tk.HORIZONTAL, command=canvas.xview)
-        scroll_frame = tk.Frame(canvas, bg="#1f1f1f")
+        # Создаем основной контейнер
+        main_container = tk.Frame(view_window, bg="#1f1f1f")
+        main_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        canvas.configure(yscrollcommand=scrollbar.set)
-        canvas.configure(xscrollcommand=scrollbar_x.set)
-
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
-
-        for site, encrypted_password in data.items():
-            password = cipher.decrypt(encrypted_password.replace("PWManager-Encrypted-Password-v1.0:", ""))
-            
-            site_label = tk.Label(scroll_frame, text=f"{site}: ", bg="#1f1f1f", fg="white", font=("Arial", 12))
-            site_label.pack(side=tk.LEFT)
-            
-            frame = tk.Frame(scroll_frame, bg="#1f1f1f")
-            frame.pack(fill=tk.X, pady=5, padx=10)
-
-            password_var = tk.StringVar(value="*" * len(password))
-            is_visible = [False]
-
-            password_label = tk.Label(frame, textvariable=password_var, bg="#1f1f1f", fg="white", font=("Arial", 12))
-            password_label.pack(side=tk.LEFT, padx=(0, 5))
-
-            def toggle_password(p=password, var=password_var, flag=is_visible):
-                flag[0] = not flag[0]
-                var.set(p if flag[0] else "*" * len(p))
-
-            toggle_button = tk.Button(frame, text="N", bg="#2196f3", fg="white", font=("Webdings", 10),
-                                    command=toggle_password)
-            toggle_button.pack(side=tk.RIGHT, padx=5)
-
-            copy_button = tk.Button(frame, text=check_lang("Копировать", "Copy"), bg="#4caf50", fg="white", font=("Arial", 10),
-                                    command=lambda site=site: self.copy_to_clipboard(site))
-            copy_button.pack(side=tk.RIGHT, padx=5)
-            
-            delete_button = tk.Button(frame, text=check_lang("Удалить", "Delete"), bg="#f44336", fg="white", font=("Arial", 10),
-                                      command=lambda site=site: self.delete_password(site))
-            
-            delete_button.pack(side=tk.RIGHT, padx=5)
-
-
-        scroll_frame.update_idletasks()
-        canvas.config(scrollregion=canvas.bbox("all"))
+        # Создаем canvas и scrollbar
+        canvas = tk.Canvas(main_container, bg="#1f1f1f", highlightthickness=0)
+        scrollbar = tk.Scrollbar(main_container, orient=tk.VERTICAL, command=canvas.yview)
         
-        def on_mouse_scroll(event):
-            canvas.yview_scroll(-1 * (event.delta // 120), "units")
+        # Создаем фрейм для контента
+        content_frame = tk.Frame(canvas, bg="#1f1f1f")
+        
+        # Настраиваем canvas
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Размещаем элементы
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        # Создаем окно в canvas
+        canvas_frame = canvas.create_window((0, 0), window=content_frame, anchor="nw", width=canvas.winfo_reqwidth())
 
-        canvas.bind_all("<MouseWheel>", on_mouse_scroll)
+        # Добавляем заголовок
+        header_label = tk.Label(content_frame,
+                              text=check_lang("Сохраненные пароли:", "Saved Passwords:"),
+                              bg="#1f1f1f", fg="white", font=("Arial", 14, "bold"))
+        header_label.pack(pady=(0, 10))
+
+        # Создаем фрейм для каждого пароля
+        for site, encrypted_password in data.items():
+            try:
+                password = cipher.decrypt(encrypted_password.replace("PWManager-Encrypted-Password-v1.0:", "").encode()).decode()
+                
+                # Создаем фрейм для пароля
+                password_frame = tk.Frame(content_frame, bg="#2d2d2d", padx=10, pady=5)
+                password_frame.pack(fill=tk.X, pady=5)
+                
+                # Создаем фрейм для информации о сайте
+                site_frame = tk.Frame(password_frame, bg="#2d2d2d")
+                site_frame.pack(fill=tk.X, pady=(5, 0))
+                
+                site_label = tk.Label(site_frame,
+                                    text=site,
+                                    bg="#2d2d2d", fg="white", font=("Arial", 12, "bold"))
+                site_label.pack(side=tk.LEFT)
+                
+                # Создаем фрейм для пароля и кнопок
+                controls_frame = tk.Frame(password_frame, bg="#2d2d2d")
+                controls_frame.pack(fill=tk.X, pady=5)
+                
+                password_var = tk.StringVar(value="*" * len(password))
+                is_visible = [False]
+                
+                password_label = tk.Label(controls_frame,
+                                        textvariable=password_var,
+                                        bg="#2d2d2d", fg="white", font=("Arial", 12))
+                password_label.pack(side=tk.LEFT, padx=(0, 10))
+                
+                def toggle_password(p=password, var=password_var, flag=is_visible):
+                    flag[0] = not flag[0]
+                    var.set(p if flag[0] else "*" * len(p))
+                
+                toggle_button = tk.Button(controls_frame,
+                                        text="👁",
+                                        command=toggle_password,
+                                        bg="#2196f3", fg="white", font=("Arial", 10),
+                                        width=3)
+                toggle_button.pack(side=tk.LEFT, padx=5)
+                
+                copy_button = tk.Button(controls_frame,
+                                      text=check_lang("Копировать", "Copy"),
+                                      command=lambda s=site: self.copy_to_clipboard(s),
+                                      bg="#4caf50", fg="white", font=("Arial", 10))
+                copy_button.pack(side=tk.LEFT, padx=5)
+                
+                delete_button = tk.Button(controls_frame,
+                                        text=check_lang("Удалить", "Delete"),
+                                        command=lambda s=site: self.delete_password(s),
+                                        bg="#f44336", fg="white", font=("Arial", 10))
+                delete_button.pack(side=tk.LEFT, padx=5)
+                
+            except Exception as e:
+                error_frame = tk.Frame(content_frame, bg="#2d2d2d", padx=10, pady=5)
+                error_frame.pack(fill=tk.X, pady=5)
+                
+                error_label = tk.Label(error_frame,
+                                     text=f"{site}: {check_lang('Ошибка', 'Error')}",
+                                     bg="#2d2d2d", fg="#f44336", font=("Arial", 12))
+                error_label.pack()
+
+        # Настраиваем прокрутку
+        def configure_scroll(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            # Обновляем ширину контента при изменении размера окна
+            canvas.itemconfig(canvas_frame, width=event.width-20)
+        
+        content_frame.bind("<Configure>", configure_scroll)
+        canvas.bind("<Configure>", configure_scroll)
+        
+        # Добавляем прокрутку колесиком мыши
+        def on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        
+        canvas.bind_all("<MouseWheel>", on_mousewheel)
+        
+        # Добавляем кнопку закрытия
+        close_button = tk.Button(view_window,
+                               text=check_lang("Закрыть", "Close"),
+                               command=view_window.destroy,
+                               bg="#2196f3", fg="white", font=("Arial", 12))
+        close_button.pack(pady=10)
+        
+        # Удаляем привязку прокрутки при закрытии окна
+        def on_close():
+            canvas.unbind_all("<MouseWheel>")
+            view_window.destroy()
+            
+        view_window.protocol("WM_DELETE_WINDOW", on_close)
 
     def check_password_strength(self, event=None):
         password = self.password_entry.get()
@@ -1082,6 +1161,182 @@ class PasswordManager(tk.Tk):
                          command=change_password,
                          bg="#2196f3", fg="white", font=("Arial", 12))
         button.pack(pady=10)
+
+    def show_export_menu(self):
+        export_window = tk.Toplevel(self)
+        export_window.title(check_lang("Экспорт данных", "Export Data"))
+        export_window.iconbitmap("icon.ico")
+        export_window.geometry("300x200")
+        export_window.configure(bg="#1f1f1f")
+        
+        # Add checkboxes for what to export
+        passwords_var = tk.BooleanVar(value=True)
+        twofa_var = tk.BooleanVar(value=True)
+        
+        passwords_check = tk.Checkbutton(export_window,
+                                       text=check_lang("Пароли", "Passwords"),
+                                       variable=passwords_var,
+                                       bg="#1f1f1f", fg="white", selectcolor="#1f1f1f",
+                                       activebackground="#1f1f1f", activeforeground="white")
+        passwords_check.pack(pady=5)
+        
+        twofa_check = tk.Checkbutton(export_window,
+                                   text=check_lang("2FA ключи", "2FA Keys"),
+                                   variable=twofa_var,
+                                   bg="#1f1f1f", fg="white", selectcolor="#1f1f1f",
+                                   activebackground="#1f1f1f", activeforeground="white")
+        twofa_check.pack(pady=5)
+        
+        def export_data():
+            from tkinter import filedialog
+            import json
+            import base64
+            
+            if not passwords_var.get() and not twofa_var.get():
+                messagebox.showerror(check_lang("Ошибка", "Error"),
+                                   check_lang("Выберите хотя бы один тип данных для экспорта", "Select at least one data type to export"))
+                return
+                
+            file_path = filedialog.asksaveasfilename(
+                defaultextension=".pwm",
+                filetypes=[(check_lang("PWManager Backup", "PWManager Backup"), "*.pwm")],
+                title=check_lang("Сохранить файл", "Save File")
+            )
+            
+            if not file_path:
+                return
+                
+            try:
+                export_data = {
+                    "version": "1.0",
+                    "timestamp": str(datetime.datetime.now()),
+                    "passwords": {},
+                    "twofa": {}
+                }
+                
+                if passwords_var.get():
+                    with open(PASSWORDS_FILE, "r") as f:
+                        export_data["passwords"] = json.load(f)
+                        
+                if twofa_var.get():
+                    with open(TWOFACTORFILE, "r") as f:
+                        export_data["twofa"] = json.load(f)
+                        
+                # Шифруем данные перед сохранением
+                encrypted_data = cipher.encrypt(json.dumps(export_data).encode())
+                
+                with open(file_path, "wb") as f:
+                    f.write(encrypted_data)
+                    
+                messagebox.showinfo(check_lang("Успех", "Success"),
+                                  check_lang("Данные успешно экспортированы", "Data successfully exported"))
+                export_window.destroy()
+                
+            except Exception as e:
+                messagebox.showerror(check_lang("Ошибка", "Error"),
+                                   f"{check_lang('Ошибка при экспорте:', 'Error during export:')} {str(e)}")
+                
+        export_button = tk.Button(export_window,
+                                text=check_lang("Экспортировать", "Export"),
+                                command=export_data,
+                                bg="#2196f3", fg="white", font=("Arial", 12))
+        export_button.pack(pady=10)
+        
+    def show_import_menu(self):
+        from tkinter import filedialog
+        import json
+        
+        file_path = filedialog.askopenfilename(
+            filetypes=[(check_lang("PWManager Backup", "PWManager Backup"), "*.pwm")],
+            title=check_lang("Выберите файл", "Select File")
+        )
+        
+        if not file_path:
+            return
+            
+        try:
+            # Читаем и расшифровываем данные
+            with open(file_path, "rb") as f:
+                encrypted_data = f.read()
+                
+            decrypted_data = json.loads(cipher.decrypt(encrypted_data))
+            
+            if not isinstance(decrypted_data, dict) or "version" not in decrypted_data:
+                raise Exception(check_lang("Неверный формат файла", "Invalid file format"))
+                
+            # Создаем окно подтверждения
+            confirm_window = tk.Toplevel(self)
+            confirm_window.title(check_lang("Подтверждение импорта", "Import Confirmation"))
+            confirm_window.iconbitmap("icon.ico")
+            confirm_window.geometry("400x300")
+            confirm_window.configure(bg="#1f1f1f")
+            
+            # Показываем информацию о данных
+            info_text = f"{check_lang('Версия:', 'Version:')} {decrypted_data['version']}\n"
+            info_text += f"{check_lang('Дата создания:', 'Created:')} {decrypted_data['timestamp']}\n\n"
+            
+            if decrypted_data["passwords"]:
+                info_text += f"{check_lang('Пароли:', 'Passwords:')} {len(decrypted_data['passwords'])}\n"
+            if decrypted_data["twofa"]:
+                info_text += f"{check_lang('2FA ключи:', '2FA Keys:')} {len(decrypted_data['twofa'])}\n"
+                
+            info_label = tk.Label(confirm_window,
+                                text=info_text,
+                                bg="#1f1f1f", fg="white", font=("Arial", 12),
+                                justify=tk.LEFT)
+            info_label.pack(pady=10, padx=10)
+            
+            # Добавляем чекбоксы для выбора что импортировать
+            passwords_var = tk.BooleanVar(value=True)
+            twofa_var = tk.BooleanVar(value=True)
+            
+            passwords_check = tk.Checkbutton(confirm_window,
+                                           text=check_lang("Импортировать пароли", "Import Passwords"),
+                                           variable=passwords_var,
+                                           bg="#1f1f1f", fg="white", selectcolor="#1f1f1f",
+                                           activebackground="#1f1f1f", activeforeground="white")
+            passwords_check.pack(pady=5)
+            
+            twofa_check = tk.Checkbutton(confirm_window,
+                                       text=check_lang("Импортировать 2FA ключи", "Import 2FA Keys"),
+                                       variable=twofa_var,
+                                       bg="#1f1f1f", fg="white", selectcolor="#1f1f1f",
+                                       activebackground="#1f1f1f", activeforeground="white")
+            twofa_check.pack(pady=5)
+            
+            def import_data():
+                try:
+                    if passwords_var.get() and decrypted_data["passwords"]:
+                        with open(PASSWORDS_FILE, "r") as f:
+                            current_passwords = json.load(f)
+                        current_passwords.update(decrypted_data["passwords"])
+                        with open(PASSWORDS_FILE, "w") as f:
+                            json.dump(current_passwords, f, indent=4)
+                            
+                    if twofa_var.get() and decrypted_data["twofa"]:
+                        with open(TWOFACTORFILE, "r") as f:
+                            current_twofa = json.load(f)
+                        current_twofa.update(decrypted_data["twofa"])
+                        with open(TWOFACTORFILE, "w") as f:
+                            json.dump(current_twofa, f, indent=4)
+                            
+                    messagebox.showinfo(check_lang("Успех", "Success"),
+                                      check_lang("Данные успешно импортированы", "Data successfully imported"))
+                    confirm_window.destroy()
+                    
+                except Exception as e:
+                    messagebox.showerror(check_lang("Ошибка", "Error"),
+                                       f"{check_lang('Ошибка при импорте:', 'Error during import:')} {str(e)}")
+                    
+            import_button = tk.Button(confirm_window,
+                                    text=check_lang("Импортировать", "Import"),
+                                    command=import_data,
+                                    bg="#2196f3", fg="white", font=("Arial", 12))
+            import_button.pack(pady=10)
+            
+        except Exception as e:
+            messagebox.showerror(check_lang("Ошибка", "Error"),
+                               f"{check_lang('Ошибка при чтении файла:', 'Error reading file:')} {str(e)}")
 
 if __name__ == "__main__":
     app = PasswordManager()
