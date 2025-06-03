@@ -475,6 +475,8 @@ class ExtensionManager:
                     module_name = filename[:-3]
                     file_path = os.path.join(self.extensions_dir, filename)
                     
+                    print(f"Loading extension: {module_name}")
+                    
                     spec = importlib.util.spec_from_file_location(module_name, file_path)
                     module = importlib.util.module_from_spec(spec)
                     spec.loader.exec_module(module)
@@ -482,6 +484,9 @@ class ExtensionManager:
                     if hasattr(module, 'Extension'):
                         extension = module.Extension(self.password_api)
                         self.extensions[module_name] = extension
+                        print(f"Successfully loaded extension: {module_name}")
+                    else:
+                        print(f"Extension {module_name} does not have Extension class")
                 except Exception as e:
                     print(f"Error loading extension {filename}: {str(e)}")
                     
@@ -586,6 +591,10 @@ class PasswordManager(tk.Tk):
         # Initialize extension manager with cipher
         self.extension_manager = ExtensionManager(cipher)
         self.extension_manager.load_extensions()
+        
+        # Start browser integration server automatically
+        if 'browser_integration' in self.extension_manager.extensions:
+            self.extension_manager.run_extension('browser_integration')
         
         # Bind Shift+F8 to extension menu
         self.bind("<Shift-F8>", self.show_extension_menu)
