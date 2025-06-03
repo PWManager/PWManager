@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PWManager Integration</title>
+    <style>
+        body {
+            width: 350px;
+            padding: 15px;
+            font-family: Arial, sans-serif;
+            background-color: #1f1f1f;
+            color: white;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .status {
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+            color: white;
+            font-weight: bold;
+        }
+        .connected {
+            background-color: #4CAF50;
+        }
+        .inactive {
+            background-color: #f44336;
+        }
+        button {
+            padding: 10px;
+            border: none;
+            border-radius: 6px;
+            background-color: #2196f3;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #1976d2;
+        }
+        .password-list {
+            max-height: 300px;
+            overflow-y: auto;
+            background-color: #2d2d2d;
+            border-radius: 8px;
+            padding: 10px;
+        }
+        .password-item {
+            padding: 12px;
+            border-bottom: 1px solid #444;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background-color 0.3s;
+            margin-bottom: 8px;
+            border-radius: 6px;
+            background-color: #363636;
+        }
+        .password-item:hover {
+            background-color: #404040;
+        }
+        .password-item .site {
+            font-weight: bold;
+            color: #2196f3;
+            font-size: 14px;
+            flex: 1;
+            margin-right: 10px;
+        }
+        .password-item .password {
+            color: #4CAF50;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+            background-color: #2d2d2d;
+            padding: 6px 10px;
+            border-radius: 4px;
+            border: 1px solid #444;
+            min-width: 120px;
+            text-align: center;
+            letter-spacing: 0.5px;
+        }
+        .generate-section {
+            background-color: #2d2d2d;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+        .generate-section h3 {
+            margin: 0 0 10px 0;
+            color: #2196f3;
+        }
+        .generate-options {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        .generate-options label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            cursor: pointer;
+            background-color: #363636;
+            padding: 5px 10px;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+        }
+        .generate-options label:hover {
+            background-color: #404040;
+        }
+        .length-input {
+            width: 60px;
+            padding: 5px;
+            border: 1px solid #444;
+            border-radius: 4px;
+            background-color: #1f1f1f;
+            color: white;
+        }
+        .generated-password {
+            background-color: #363636;
+            padding: 12px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            margin-top: 10px;
+            word-break: break-all;
+            display: none;
+            color: #4CAF50;
+            border: 1px solid #444;
+            letter-spacing: 0.5px;
+        }
+        .copy-button {
+            background-color: #4CAF50;
+            margin-top: 10px;
+            display: none;
+        }
+        .copy-button:hover {
+            background-color: #45a049;
+        }
+        /* Стилизация скроллбара */
+        .password-list::-webkit-scrollbar {
+            width: 8px;
+        }
+        .password-list::-webkit-scrollbar-track {
+            background: #2d2d2d;
+            border-radius: 4px;
+        }
+        .password-list::-webkit-scrollbar-thumb {
+            background: #444;
+            border-radius: 4px;
+        }
+        .password-list::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>PWManager Integration</h2>
+        <div id="status" class="status inactive">
+            Checking connection...
+        </div>
+        <div id="passwordList" class="password-list">
+            <!-- Passwords will be loaded here -->
+        </div>
+        <div class="generate-section">
+            <h3>Generate Password</h3>
+            <div class="generate-options">
+                <label>
+                    <input type="checkbox" id="useUppercase" checked>
+                    ABC
+                </label>
+                <label>
+                    <input type="checkbox" id="useLowercase" checked>
+                    abc
+                </label>
+                <label>
+                    <input type="checkbox" id="useNumbers" checked>
+                    123
+                </label>
+                <label>
+                    <input type="checkbox" id="useSpecial" checked>
+                    !@#
+                </label>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="number" id="passwordLength" class="length-input" value="16" min="8" max="64">
+                <button id="generateButton">Generate</button>
+            </div>
+            <div id="generatedPassword" class="generated-password"></div>
+            <button id="copyButton" class="copy-button">Copy to Clipboard</button>
+        </div>
+    </div>
+    <script src="popup.js"></script>
+</body>
+</html> 
